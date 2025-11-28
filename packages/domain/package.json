@@ -1,0 +1,41 @@
+{
+  "name": "@sis/domain",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./gpa": {
+      "types": "./dist/gpa/index.d.ts",
+      "import": "./dist/gpa/index.js"
+    },
+    "./sap": {
+      "types": "./dist/sap/index.d.ts",
+      "import": "./dist/sap/index.js"
+    },
+    "./r2t4": {
+      "types": "./dist/r2t4/index.d.ts",
+      "import": "./dist/r2t4/index.js"
+    },
+    "./common": {
+      "types": "./dist/common/index.d.ts",
+      "import": "./dist/common/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@sis/typescript-config": "workspace:*",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.6"
+  }
+}

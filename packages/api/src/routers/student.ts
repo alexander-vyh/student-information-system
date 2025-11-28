@@ -1,0 +1,147 @@
+/**
+ * Student Router
+ *
+ * tRPC router for student-related operations.
+ */
+
+import { z } from "zod";
+import {
+  router,
+  protectedProcedure,
+  canAccessStudent,
+} from "../trpc.js";
+import { eq } from "drizzle-orm";
+import { students, studentAddresses } from "@sis/db/schema";
+
+export const studentRouter = router({
+  /**
+   * Get current user's student profile
+   */
+  me: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user?.studentId) {
+      return null;
+    }
+
+    const student = await ctx.db.query.students.findFirst({
+      where: eq(students.id, ctx.user.studentId),
+    });
+
+    return student;
+  }),
+
+  /**
+   * Get student by ID (requires appropriate permissions)
+   */
+  getById: protectedProcedure
+    .input(z.object({ studentId: z.string().uuid() }))
+    .use(canAccessStudent((input) => (input as { studentId: string }).studentId))
+    .query(async ({ ctx, input }) => {
+      const student = await ctx.db.query.students.findFirst({
+        where: eq(students.id, input.studentId),
+      });
+
+      if (!student) {
+        return null;
+      }
+
+      // Mask sensitive fields based on role
+      if (!ctx.user?.roles.includes("ADMIN") && !ctx.user?.roles.includes("REGISTRAR")) {
+        return {
+          ...student,
+          ssnEncrypted: undefined,
+          ssnLast4: student.ssnLast4 ? `***-**-${student.ssnLast4}` : null,
+        };
+      }
+
+      return student;
+    }),
+
+  /**
+   * Search students (staff only)
+   */
+  search: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(2),
+        limit: z.number().min(1).max(100).default(20),
+        offset: z.number().min(0).default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      // Verify user has search permission
+      const searchRoles = ["ADMIN", "REGISTRAR", "FINANCIAL_AID", "BURSAR", "ADVISOR"];
+      if (!searchRoles.some((role) => ctx.user?.roles.includes(role))) {
+        return { students: [], total: 0 };
+      }
+
+      // This is a simplified search - in production, use PostgreSQL full-text search
+      // or a dedicated search service
+      const results = await ctx.db.query.students.findMany({
+        where: eq(students.institutionId, ctx.user!.institutionId),
+        limit: input.limit,
+        offset: input.offset,
+        columns: {
+          id: true,
+          studentId: true,
+          legalFirstName: true,
+          legalLastName: true,
+          preferredFirstName: true,
+          primaryEmail: true,
+          status: true,
+        },
+      });
+
+      return {
+        students: results,
+        total: results.length, // Would need COUNT query for actual total
+      };
+    }),
+
+  /**
+   * Update student address
+   */
+  updateAddress: protectedProcedure
+    .input(
+      z.object({
+        studentId: z.string().uuid(),
+        addressId: z.string().uuid().optional(),
+        addressType: z.enum(["permanent", "mailing", "local", "billing"]),
+        address1: z.string().min(1).max(100),
+        address2: z.string().max(100).optional(),
+        city: z.string().min(1).max(100),
+        state: z.string().max(50).optional(),
+        postalCode: z.string().max(20).optional(),
+        country: z.string().length(2).default("US"),
+        isPrimary: z.boolean().default(false),
+      })
+    )
+    .use(canAccessStudent((input) => (input as { studentId: string }).studentId))
+    .mutation(async ({ ctx, input }) => {
+      const { studentId, addressId, ...addressData } = input;
+
+      if (addressId) {
+        // Update existing address
+        const [updated] = await ctx.db
+          .update(studentAddresses)
+          .set({
+            ...addressData,
+            updatedAt: new Date(),
+          })
+          .where(eq(studentAddresses.id, addressId))
+          .returning();
+
+        return updated;
+      } else {
+        // Create new address
+        const [created] = await ctx.db
+          .insert(studentAddresses)
+          .values({
+            studentId,
+            ...addressData,
+          })
+          .returning();
+
+        return created;
+      }
+    }),
+});

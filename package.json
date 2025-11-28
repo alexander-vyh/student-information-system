@@ -1,0 +1,30 @@
+{
+  "name": "student-information-system",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.14.2",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:setup": "./scripts/dev-setup.sh",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "db:generate": "turbo db:generate",
+    "db:migrate": "turbo db:migrate",
+    "db:push": "turbo db:push",
+    "db:seed": "pnpm --filter @sis/db db:seed",
+    "db:studio": "pnpm --filter @sis/db studio",
+    "clean": "turbo clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+  },
+  "devDependencies": {
+    "@sis/typescript-config": "workspace:*",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.1",
+    "typescript": "^5.7.2"
+  }
+}
