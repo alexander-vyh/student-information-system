@@ -12,7 +12,7 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { institutions } from "./core";
+import { institutions } from "./core.js";
 
 // Identity schema for authentication and authorization
 export const identitySchema = pgSchema("identity");
@@ -277,7 +277,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     references: [institutions.id],
   }),
   sessions: many(sessions),
-  userRoles: many(userRoles),
+  userRoles: many(userRoles, { relationName: "userToRoles" }),
+  assignedRoles: many(userRoles, { relationName: "assignedByUser" }),
   accounts: many(oauthAccounts),
   auditLogs: many(auditLogs),
 }));
@@ -317,6 +318,7 @@ export const userRolesRelations = relations(userRoles, ({ one }) => ({
   user: one(users, {
     fields: [userRoles.userId],
     references: [users.id],
+    relationName: "userToRoles",
   }),
   role: one(roles, {
     fields: [userRoles.roleId],
@@ -325,6 +327,7 @@ export const userRolesRelations = relations(userRoles, ({ one }) => ({
   assignedByUser: one(users, {
     fields: [userRoles.assignedBy],
     references: [users.id],
+    relationName: "assignedByUser",
   }),
 }));
 

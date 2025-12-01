@@ -6,7 +6,7 @@
  */
 
 import "dotenv/config";
-import { db } from "./index";
+import { db } from "./index.js";
 import {
   institutions,
   campuses,
@@ -23,7 +23,10 @@ import {
   courses,
   sections,
   registrations,
-} from "./schema/index";
+  gradeScales,
+  grades,
+  registrationHolds,
+} from "./schema/index.js";
 
 // Demo UUIDs (fixed for reproducibility)
 const IDS = {
@@ -66,6 +69,8 @@ const IDS = {
   // Rooms
   roomSci101: "cccccccc-cccc-cccc-cccc-ccccccccc001",
   roomSci201: "cccccccc-cccc-cccc-cccc-ccccccccc002",
+  // Grade Scale
+  gradeScaleStandard: "dddddddd-dddd-dddd-dddd-ddddddddd001",
 };
 
 async function seed() {
@@ -73,6 +78,9 @@ async function seed() {
 
   // Clear existing data (in reverse dependency order)
   console.log("Clearing existing data...");
+  await db.delete(grades);
+  await db.delete(gradeScales);
+  await db.delete(registrationHolds);
   await db.delete(registrations);
   await db.delete(sections);
   await db.delete(courses);
@@ -342,7 +350,40 @@ async function seed() {
     },
   ]);
 
-  // 10. Courses
+  // 10. Grade Scale and Grades
+  console.log("Creating grade scale and grades...");
+  await db.insert(gradeScales).values({
+    id: IDS.gradeScaleStandard,
+    institutionId: IDS.institution,
+    code: "STD",
+    name: "Standard Letter Grades",
+    isDefault: true,
+    isActive: true,
+  });
+
+  await db.insert(grades).values([
+    // Standard letter grades
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "A", gradePoints: "4.000", displayOrder: 1 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "A-", gradePoints: "3.700", displayOrder: 2 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "B+", gradePoints: "3.300", displayOrder: 3 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "B", gradePoints: "3.000", displayOrder: 4 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "B-", gradePoints: "2.700", displayOrder: 5 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "C+", gradePoints: "2.300", displayOrder: 6 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "C", gradePoints: "2.000", displayOrder: 7 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "C-", gradePoints: "1.700", displayOrder: 8 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "D+", gradePoints: "1.300", displayOrder: 9 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "D", gradePoints: "1.000", displayOrder: 10 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "D-", gradePoints: "0.700", displayOrder: 11 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "F", gradePoints: "0.000", displayOrder: 12 },
+    // Special grades
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "W", gradePoints: null, countInGpa: false, earnedCredits: false, attemptedCredits: false, isWithdrawal: true, displayOrder: 20 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "I", gradePoints: null, countInGpa: false, earnedCredits: false, attemptedCredits: true, isIncomplete: true, displayOrder: 21 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "P", gradePoints: null, countInGpa: false, earnedCredits: true, attemptedCredits: false, isPassFail: true, displayOrder: 22 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "NP", gradePoints: null, countInGpa: false, earnedCredits: false, attemptedCredits: false, isPassFail: true, displayOrder: 23 },
+    { gradeScaleId: IDS.gradeScaleStandard, gradeCode: "AU", gradePoints: null, countInGpa: false, earnedCredits: false, attemptedCredits: false, isAudit: true, displayOrder: 24 },
+  ]);
+
+  // 11. Courses
   console.log("Creating courses...");
   await db.insert(courses).values([
     {

@@ -1,20 +1,20 @@
 // Core schema - institutions, terms, campuses
-export * from "./core";
+export * from "./core.js";
 
 // Identity schema - users, roles, permissions, audit
-export * from "./identity";
+export * from "./identity.js";
 
 // Student schema - student records, programs, advisors
-export * from "./student";
+export * from "./student.js";
 
 // Curriculum schema - courses, sections, catalog
-export * from "./curriculum";
+export * from "./curriculum.js";
 
 // Enrollment schema - registrations, grades
-export * from "./enrollment";
+export * from "./enrollment.js";
 
 // Financial schema - student accounts, billing, 1098-T
-export * from "./financial";
+export * from "./financial.js";
 
 // Aid schema - financial aid, SAP, R2T4
-export * from "./aid";
+export * from "./aid.js";

@@ -38,12 +38,16 @@ if [ $RETRIES -eq 0 ]; then
 fi
 echo -e "${GREEN}✓ PostgreSQL is ready${NC}"
 
+# Build database package (needed for drizzle-kit to read compiled schema)
+echo -e "\n${YELLOW}[4/6] Building database package...${NC}"
+pnpm --filter @sis/db build
+
 # Run database migrations
-echo -e "\n${YELLOW}[4/5] Running database migrations...${NC}"
-pnpm db:push
+echo -e "\n${YELLOW}[5/6] Running database migrations...${NC}"
+pnpm db:migrate
 
 # Check if seed data exists and seed if needed
-echo -e "\n${YELLOW}[5/5] Checking seed data...${NC}"
+echo -e "\n${YELLOW}[6/6] Checking seed data...${NC}"
 SEED_CHECK=$(docker compose -f docker/docker-compose.yml exec -T postgres psql -U sis -d sis -tAc "SELECT COUNT(*) FROM identity.users" 2>/dev/null || echo "0")
 
 if [ "$SEED_CHECK" = "0" ] || [ -z "$SEED_CHECK" ]; then

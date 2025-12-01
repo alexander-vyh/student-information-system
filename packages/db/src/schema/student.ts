@@ -14,8 +14,8 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { institutions, campuses } from "./core";
-import { users } from "./identity";
+import { institutions, campuses } from "./core.js";
+import { users } from "./identity.js";
 
 // Student schema for student records
 export const studentSchema = pgSchema("student");

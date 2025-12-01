@@ -10,8 +10,14 @@ import {
   protectedProcedure,
   canAccessStudent,
 } from "../trpc.js";
-import { eq } from "drizzle-orm";
-import { students, studentAddresses } from "@sis/db/schema";
+import { eq, and, inArray, isNull } from "drizzle-orm";
+import {
+  students,
+  studentAddresses,
+  studentGpaSummary,
+  registrations,
+  registrationHolds,
+} from "@sis/db/schema";
 
 export const studentRouter = router({
   /**
@@ -94,6 +100,103 @@ export const studentRouter = router({
       return {
         students: results,
         total: results.length, // Would need COUNT query for actual total
+      };
+    }),
+
+  /**
+   * Get student with detailed information (GPA, enrollments, holds)
+   */
+  getWithDetails: protectedProcedure
+    .input(z.object({ studentId: z.string().uuid() }))
+    .use(canAccessStudent((input) => (input as { studentId: string }).studentId))
+    .query(async ({ ctx, input }) => {
+      // Get student basic info
+      const student = await ctx.db.query.students.findFirst({
+        where: eq(students.id, input.studentId),
+      });
+
+      if (!student) {
+        return null;
+      }
+
+      // Get GPA summary
+      const gpaSummary = await ctx.db.query.studentGpaSummary.findFirst({
+        where: eq(studentGpaSummary.studentId, input.studentId),
+      });
+
+      // Get current enrollments (registered status only)
+      const currentEnrollments = await ctx.db.query.registrations.findMany({
+        where: and(
+          eq(registrations.studentId, input.studentId),
+          eq(registrations.status, "registered")
+        ),
+        with: {
+          section: {
+            with: {
+              course: true,
+            },
+          },
+          term: true,
+        },
+        orderBy: (registrations, { desc }) => [desc(registrations.registrationDate)],
+        limit: 10,
+      });
+
+      // Get active holds (not resolved)
+      const activeHolds = await ctx.db.query.registrationHolds.findMany({
+        where: and(
+          eq(registrationHolds.studentId, input.studentId),
+          isNull(registrationHolds.resolvedAt)
+        ),
+        orderBy: (registrationHolds, { desc }) => [desc(registrationHolds.effectiveFrom)],
+      });
+
+      // Mask sensitive fields based on role
+      const isPrivileged =
+        ctx.user?.roles.includes("ADMIN") ||
+        ctx.user?.roles.includes("REGISTRAR");
+
+      const sanitizedStudent = isPrivileged
+        ? student
+        : {
+            ...student,
+            ssnEncrypted: undefined,
+            ssnLast4: student.ssnLast4 ? `***-**-${student.ssnLast4}` : null,
+          };
+
+      return {
+        student: sanitizedStudent,
+        gpaSummary: gpaSummary
+          ? {
+              cumulativeGpa: gpaSummary.cumulativeGpa,
+              cumulativeEarnedCredits: gpaSummary.cumulativeEarnedCredits,
+              cumulativeAttemptedCredits: gpaSummary.cumulativeAttemptedCredits,
+              inProgressCredits: gpaSummary.inProgressCredits,
+              transferCredits: gpaSummary.transferCredits,
+              lastTermGpa: gpaSummary.lastTermGpa,
+            }
+          : null,
+        currentEnrollments: currentEnrollments.map((reg) => ({
+          registrationId: reg.id,
+          courseCode: reg.section?.course?.courseCode ?? "Unknown",
+          courseTitle: reg.section?.course?.title ?? "Unknown",
+          sectionNumber: reg.section?.sectionNumber,
+          creditHours: reg.creditHours,
+          gradeMode: reg.gradeMode,
+          termName: reg.term?.name ?? "Unknown Term",
+          registeredAt: reg.registrationDate,
+        })),
+        activeHolds: activeHolds.map((hold) => ({
+          id: hold.id,
+          holdType: hold.holdType,
+          holdName: hold.holdName,
+          description: hold.description,
+          blocksRegistration: hold.blocksRegistration,
+          blocksGrades: hold.blocksGrades,
+          blocksTranscript: hold.blocksTranscript,
+          blocksDiploma: hold.blocksDiploma,
+          effectiveFrom: hold.effectiveFrom,
+        })),
       };
     }),
 

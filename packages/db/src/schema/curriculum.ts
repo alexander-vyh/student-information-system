@@ -15,8 +15,8 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { institutions, campuses, terms, rooms } from "./core";
-import { users } from "./identity";
+import { institutions, campuses, terms, rooms } from "./core.js";
+import { users } from "./identity.js";
 
 // Curriculum schema for academic catalog
 export const curriculumSchema = pgSchema("curriculum");

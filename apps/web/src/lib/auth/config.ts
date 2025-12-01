@@ -10,7 +10,7 @@ import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
 import { db } from "@sis/db";
 import { eq } from "drizzle-orm";
-import { users, sessions } from "@sis/db/schema";
+import { users, sessions, students } from "@sis/db/schema";
 
 /**
  * Credential validation schema
@@ -183,13 +183,23 @@ export const authConfig: NextAuthConfig = {
         // Get roles
         const roles = user.userRoles.map((ur) => ur.role.code);
 
+        // Get studentId if user has student role
+        let studentId: string | undefined;
+        if (roles.includes("STUDENT")) {
+          const studentRecord = await db.query.students.findFirst({
+            where: eq(students.userId, user.id),
+            columns: { id: true },
+          });
+          studentId = studentRecord?.id;
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: `${user.firstName} ${user.lastName}`,
           roles,
           institutionId: user.institutionId,
-          studentId: undefined, // TODO: Query from students table if needed
+          studentId,
         };
       },
     }),

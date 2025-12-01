@@ -8,6 +8,8 @@ import { router } from "./trpc.js";
 import { healthRouter } from "./routers/health.js";
 import { studentRouter } from "./routers/student.js";
 import { enrollmentRouter } from "./routers/enrollment.js";
+import { adminRouter } from "./routers/admin.js";
+import { holdsRouter } from "./routers/holds.js";
 
 /**
  * Main application router
@@ -16,6 +18,8 @@ export const appRouter = router({
   health: healthRouter,
   student: studentRouter,
   enrollment: enrollmentRouter,
+  admin: adminRouter,
+  holds: holdsRouter,
 
   // TODO: Add more routers as they are implemented
   // financial: financialRouter,

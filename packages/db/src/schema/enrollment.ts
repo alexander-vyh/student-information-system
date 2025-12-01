@@ -14,10 +14,10 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { institutions, terms } from "./core";
-import { users } from "./identity";
-import { students, studentPrograms } from "./student";
-import { sections, courses, grades } from "./curriculum";
+import { institutions, terms } from "./core.js";
+import { users } from "./identity.js";
+import { students, studentPrograms } from "./student.js";
+import { sections, courses, grades } from "./curriculum.js";
 
 // Enrollment schema for registration and grades
 export const enrollmentSchema = pgSchema("enrollment");

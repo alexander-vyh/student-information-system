@@ -14,10 +14,10 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { institutions, academicYears, terms } from "./core";
-import { users } from "./identity";
-import { students, studentPrograms } from "./student";
-import { ledgerEntries } from "./financial";
+import { institutions, academicYears, terms } from "./core.js";
+import { users } from "./identity.js";
+import { students, studentPrograms } from "./student.js";
+import { ledgerEntries } from "./financial.js";
 
 // Financial Aid schema
 export const aidSchema = pgSchema("aid");

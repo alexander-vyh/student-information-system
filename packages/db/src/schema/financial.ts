@@ -13,9 +13,9 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { institutions, terms } from "./core";
-import { users } from "./identity";
-import { students } from "./student";
+import { institutions, terms } from "./core.js";
+import { users } from "./identity.js";
+import { students } from "./student.js";
 
 // Financial schema for student accounts and bursar functions
 export const financialSchema = pgSchema("financial");
