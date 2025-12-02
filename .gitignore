@@ -17,6 +17,7 @@ out/
 # IDE/Editor
 .idea/
 .vscode/
+.serena/
 *.swp
 *.swo
 .DS_Store
@@ -31,6 +32,7 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+.coverage
 .nyc_output/
 
 # Database
@@ -53,6 +55,20 @@ drizzle/meta/
 .cache/
 tmp/
 temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Claude local settings
+.claude/settings.local.json
 
 # Source documents (large files)
 *.xlsx
