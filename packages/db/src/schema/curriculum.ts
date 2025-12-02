@@ -593,3 +593,297 @@ export const gradesRelations = relations(grades, ({ one }) => ({
     references: [gradeScales.id],
   }),
 }));
+
+// ============================================================================
+// PROGRAM REQUIREMENTS (FOR DEGREE AUDIT)
+// ============================================================================
+
+// Requirement Category - groups requirements (Core, Major, Gen Ed, Electives)
+export const requirementCategories = curriculumSchema.table("requirement_categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  institutionId: uuid("institution_id")
+    .notNull()
+    .references(() => institutions.id),
+
+  code: varchar("code", { length: 30 }).notNull(), // CORE, GEN_ED, MAJOR, ELEC
+  name: varchar("name", { length: 100 }).notNull(), // "Core Requirements", "General Education"
+  description: text("description"),
+
+  // Display order on degree audit
+  displayOrder: integer("display_order").default(0),
+
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  institutionCodeIdx: index("requirement_categories_institution_code_idx").on(table.institutionId, table.code),
+}));
+
+// Program Requirements - defines what's needed for a program/catalog year
+export const programRequirements = curriculumSchema.table("program_requirements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  programId: uuid("program_id")
+    .notNull()
+    .references(() => programs.id),
+  catalogYearId: uuid("catalog_year_id")
+    .references(() => catalogYears.id),
+  categoryId: uuid("category_id")
+    .references(() => requirementCategories.id),
+
+  // Requirement details
+  name: varchar("name", { length: 200 }).notNull(), // "Computer Science Core"
+  description: text("description"),
+
+  // Credit requirements
+  minimumCredits: decimal("minimum_credits", { precision: 5, scale: 2 }),
+  maximumCredits: decimal("maximum_credits", { precision: 5, scale: 2 }),
+
+  // Course count requirements
+  minimumCourses: integer("minimum_courses"),
+
+  // GPA requirement for this category
+  minimumGpa: decimal("minimum_gpa", { precision: 4, scale: 3 }),
+
+  // Can courses from this requirement count toward other requirements?
+  allowSharing: boolean("allow_sharing").default(false),
+
+  // Display order within the category
+  displayOrder: integer("display_order").default(0),
+
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  programCatalogIdx: index("program_requirements_program_catalog_idx").on(table.programId, table.catalogYearId),
+  categoryIdx: index("program_requirements_category_idx").on(table.categoryId),
+}));
+
+// Requirement Courses - specific courses that satisfy a requirement
+export const requirementCourses = curriculumSchema.table("requirement_courses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requirementId: uuid("requirement_id")
+    .notNull()
+    .references(() => programRequirements.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id")
+    .notNull()
+    .references(() => courses.id),
+
+  // Is this a required course vs an elective option?
+  isRequired: boolean("is_required").default(true),
+
+  // Minimum grade required
+  minimumGrade: varchar("minimum_grade", { length: 5 }),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  requirementCourseIdx: index("requirement_courses_requirement_course_idx").on(table.requirementId, table.courseId),
+}));
+
+// Requirement Course Groups - flexible course choices (pick X from list)
+export const requirementCourseGroups = curriculumSchema.table("requirement_course_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requirementId: uuid("requirement_id")
+    .notNull()
+    .references(() => programRequirements.id, { onDelete: "cascade" }),
+
+  name: varchar("name", { length: 200 }).notNull(), // "Humanities Elective"
+  description: text("description"),
+
+  // How many courses/credits must be selected from this group
+  minimumCourses: integer("minimum_courses"),
+  minimumCredits: decimal("minimum_credits", { precision: 5, scale: 2 }),
+
+  // Rule-based selection
+  selectionRule: jsonb("selection_rule").$type<CourseSelectionRule>(),
+
+  displayOrder: integer("display_order").default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Interface for course selection rules
+export interface CourseSelectionRule {
+  type: "course_list" | "subject" | "level" | "attribute";
+  // For course_list: specific course IDs
+  courseIds?: string[];
+  // For subject: courses from specific subjects
+  subjectCodes?: string[];
+  // For level: minimum course level (e.g., "300" for 300-level+)
+  minimumLevel?: string;
+  maximumLevel?: string;
+  // For attribute: courses with specific attributes
+  attributes?: string[];
+  // Exclusions
+  excludeCourseIds?: string[];
+}
+
+// Requirement Course Group Courses - courses in a group
+export const requirementCourseGroupCourses = curriculumSchema.table("requirement_course_group_courses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id")
+    .notNull()
+    .references(() => requirementCourseGroups.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id")
+    .notNull()
+    .references(() => courses.id),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  groupCourseIdx: index("requirement_course_group_courses_group_course_idx").on(table.groupId, table.courseId),
+}));
+
+// Student Degree Audit - stored audit results
+export const studentDegreeAudits = curriculumSchema.table("student_degree_audits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  studentId: uuid("student_id").notNull(),
+  studentProgramId: uuid("student_program_id").notNull(),
+  programId: uuid("program_id")
+    .notNull()
+    .references(() => programs.id),
+  catalogYearId: uuid("catalog_year_id")
+    .references(() => catalogYears.id),
+
+  // Audit timestamp
+  auditDate: timestamp("audit_date", { withTimezone: true }).defaultNow().notNull(),
+
+  // Overall progress
+  totalCreditsRequired: decimal("total_credits_required", { precision: 5, scale: 2 }),
+  totalCreditsEarned: decimal("total_credits_earned", { precision: 5, scale: 2 }),
+  totalCreditsInProgress: decimal("total_credits_in_progress", { precision: 5, scale: 2 }),
+
+  // GPA requirements
+  overallGpaRequired: decimal("overall_gpa_required", { precision: 4, scale: 3 }),
+  overallGpaActual: decimal("overall_gpa_actual", { precision: 4, scale: 3 }),
+  majorGpaRequired: decimal("major_gpa_required", { precision: 4, scale: 3 }),
+  majorGpaActual: decimal("major_gpa_actual", { precision: 4, scale: 3 }),
+
+  // Completion percentage
+  completionPercentage: decimal("completion_percentage", { precision: 5, scale: 2 }),
+
+  // Requirements status
+  requirementsStatus: jsonb("requirements_status").$type<RequirementAuditResult[]>(),
+
+  // Courses used (for sharing tracking)
+  coursesApplied: jsonb("courses_applied").$type<AppliedCourse[]>(),
+
+  // Audit status
+  status: varchar("status", { length: 20 }).default("calculated"), // calculated, reviewed, locked
+
+  // Who ran the audit
+  generatedBy: uuid("generated_by"),
+
+  // Notes
+  advisorNotes: text("advisor_notes"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  studentProgramIdx: index("student_degree_audits_student_program_idx").on(table.studentId, table.studentProgramId),
+  auditDateIdx: index("student_degree_audits_audit_date_idx").on(table.auditDate),
+}));
+
+// Interfaces for degree audit results
+export interface RequirementAuditResult {
+  requirementId: string;
+  requirementName: string;
+  categoryName: string;
+  status: "complete" | "in_progress" | "incomplete" | "not_started";
+  creditsRequired: number;
+  creditsEarned: number;
+  creditsInProgress: number;
+  gpaRequired?: number;
+  gpaActual?: number;
+  coursesRequired: number;
+  coursesCompleted: number;
+  coursesInProgress: number;
+  appliedCourses: string[]; // course IDs
+  missingCourses: string[]; // required course IDs not yet taken
+  notes?: string;
+}
+
+export interface AppliedCourse {
+  courseId: string;
+  courseCode: string;
+  registrationId?: string;
+  transferCreditId?: string;
+  testScoreId?: string;
+  creditsEarned: number;
+  grade?: string;
+  gradePoints?: number;
+  termId?: string;
+  requirementIds: string[]; // which requirements this course satisfies
+  status: "completed" | "in_progress" | "transfer" | "test_credit";
+}
+
+// Requirement Categories Relations
+export const requirementCategoriesRelations = relations(requirementCategories, ({ one, many }) => ({
+  institution: one(institutions, {
+    fields: [requirementCategories.institutionId],
+    references: [institutions.id],
+  }),
+  requirements: many(programRequirements),
+}));
+
+// Program Requirements Relations
+export const programRequirementsRelations = relations(programRequirements, ({ one, many }) => ({
+  program: one(programs, {
+    fields: [programRequirements.programId],
+    references: [programs.id],
+  }),
+  catalogYear: one(catalogYears, {
+    fields: [programRequirements.catalogYearId],
+    references: [catalogYears.id],
+  }),
+  category: one(requirementCategories, {
+    fields: [programRequirements.categoryId],
+    references: [requirementCategories.id],
+  }),
+  courses: many(requirementCourses),
+  courseGroups: many(requirementCourseGroups),
+}));
+
+// Requirement Courses Relations
+export const requirementCoursesRelations = relations(requirementCourses, ({ one }) => ({
+  requirement: one(programRequirements, {
+    fields: [requirementCourses.requirementId],
+    references: [programRequirements.id],
+  }),
+  course: one(courses, {
+    fields: [requirementCourses.courseId],
+    references: [courses.id],
+  }),
+}));
+
+// Requirement Course Groups Relations
+export const requirementCourseGroupsRelations = relations(requirementCourseGroups, ({ one, many }) => ({
+  requirement: one(programRequirements, {
+    fields: [requirementCourseGroups.requirementId],
+    references: [programRequirements.id],
+  }),
+  courses: many(requirementCourseGroupCourses),
+}));
+
+// Requirement Course Group Courses Relations
+export const requirementCourseGroupCoursesRelations = relations(requirementCourseGroupCourses, ({ one }) => ({
+  group: one(requirementCourseGroups, {
+    fields: [requirementCourseGroupCourses.groupId],
+    references: [requirementCourseGroups.id],
+  }),
+  course: one(courses, {
+    fields: [requirementCourseGroupCourses.courseId],
+    references: [courses.id],
+  }),
+}));
+
+// Student Degree Audits Relations
+export const studentDegreeAuditsRelations = relations(studentDegreeAudits, ({ one }) => ({
+  program: one(programs, {
+    fields: [studentDegreeAudits.programId],
+    references: [programs.id],
+  }),
+  catalogYear: one(catalogYears, {
+    fields: [studentDegreeAudits.catalogYearId],
+    references: [catalogYears.id],
+  }),
+}));

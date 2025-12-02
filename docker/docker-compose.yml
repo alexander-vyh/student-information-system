@@ -85,6 +85,37 @@ services:
     profiles:
       - dev
 
+  # Course Scheduler Service (Python/OR-Tools)
+  scheduler:
+    build:
+      context: ../services/scheduler
+      dockerfile: Dockerfile
+    container_name: sis-scheduler
+    restart: unless-stopped
+    environment:
+      SCHEDULER_DEBUG: ${SCHEDULER_DEBUG:-false}
+      SCHEDULER_LOG_LEVEL: ${SCHEDULER_LOG_LEVEL:-INFO}
+      SCHEDULER_DATABASE_URL: postgresql://${POSTGRES_USER:-sis}:${POSTGRES_PASSWORD:-sis_dev_password}@postgres:5432/${POSTGRES_DB:-sis}
+      SCHEDULER_REDIS_URL: redis://redis:6379/1
+      SCHEDULER_CALLBACK_BASE_URL: http://web:3000/api/trpc
+      SCHEDULER_SOLVER_TIME_LIMIT_SECONDS: ${SCHEDULER_TIME_LIMIT:-300}
+      SCHEDULER_SOLVER_NUM_WORKERS: ${SCHEDULER_WORKERS:-4}
+    ports:
+      - "${SCHEDULER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    profiles:
+      - scheduler
+
 volumes:
   postgres_data:
     driver: local

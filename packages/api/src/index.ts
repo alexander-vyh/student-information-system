@@ -23,6 +23,7 @@ export {
 export { healthRouter } from "./routers/health.js";
 export { studentRouter } from "./routers/student.js";
 export { enrollmentRouter } from "./routers/enrollment.js";
+export { schedulingRouter } from "./routers/scheduling.js";
 
 // Audit logging
 export * from "./audit/index.js";

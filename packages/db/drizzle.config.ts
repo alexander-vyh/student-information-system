@@ -8,6 +8,7 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
+  schemaFilter: ["core", "identity", "student", "curriculum", "enrollment", "financial", "aid", "scheduling", "system"],
   verbose: true,
   strict: true,
 });

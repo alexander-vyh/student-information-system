@@ -449,3 +449,225 @@ export const studentGpaSummaryRelations = relations(studentGpaSummary, ({ one })
     references: [studentPrograms.id],
   }),
 }));
+
+// =============================================================================
+// Academic Standing
+// =============================================================================
+
+/**
+ * Academic Standing Status values used across the system
+ */
+export type AcademicStandingStatus =
+  | "good_standing"
+  | "academic_warning"
+  | "academic_probation"
+  | "academic_suspension"
+  | "academic_dismissal"
+  | "reinstated";
+
+/**
+ * Academic Standing Policy - defines thresholds and rules for standing determination
+ * Each institution can have different policies for different levels (undergrad, graduate, etc.)
+ */
+export const academicStandingPolicies = studentSchema.table("academic_standing_policies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  institutionId: uuid("institution_id")
+    .notNull()
+    .references(() => institutions.id),
+
+  name: varchar("name", { length: 100 }).notNull(),
+  code: varchar("code", { length: 30 }).notNull(), // e.g., "UNDERGRAD_STANDARD", "GRADUATE"
+  description: text("description"),
+
+  // Applicable level (undergrad, graduate, certificate, etc.)
+  levelCode: varchar("level_code", { length: 20 }), // null = applies to all levels
+
+  // GPA Thresholds
+  goodStandingMinGpa: decimal("good_standing_min_gpa", { precision: 4, scale: 3 }).default("2.000").notNull(),
+  warningMinGpa: decimal("warning_min_gpa", { precision: 4, scale: 3 }), // Below good standing but above probation
+  probationMinGpa: decimal("probation_min_gpa", { precision: 4, scale: 3 }), // Below warning/good standing
+
+  // Progression rules
+  probationMaxTerms: integer("probation_max_terms").default(2), // Max terms on probation before suspension
+  suspensionDurationTerms: integer("suspension_duration_terms").default(1), // How many terms suspended
+  maxSuspensions: integer("max_suspensions").default(2), // Max suspensions before dismissal
+
+  // Credit-hour based thresholds (some institutions vary by credits completed)
+  thresholdsByCredits: jsonb("thresholds_by_credits").$type<{
+    maxCredits: number;
+    goodStandingMinGpa: number;
+    probationMinGpa?: number;
+  }[]>(),
+
+  // Additional rules
+  requiresMinimumCredits: boolean("requires_minimum_credits").default(false),
+  minimumCreditsPerTerm: decimal("minimum_credits_per_term", { precision: 5, scale: 2 }),
+
+  // Evaluation timing
+  evaluateAfterEachTerm: boolean("evaluate_after_each_term").default(true).notNull(),
+
+  // Active status
+  isActive: boolean("is_active").default(true).notNull(),
+  effectiveFrom: date("effective_from"),
+  effectiveUntil: date("effective_until"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  institutionIdx: index("academic_standing_policies_institution_idx").on(table.institutionId),
+  codeIdx: index("academic_standing_policies_code_idx").on(table.institutionId, table.code),
+}));
+
+/**
+ * Academic Standing History - tracks each standing determination for a student
+ * Created after each term ends or when standing is manually adjusted
+ */
+export const academicStandingHistory = studentSchema.table("academic_standing_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => students.id, { onDelete: "cascade" }),
+  studentProgramId: uuid("student_program_id")
+    .references(() => studentPrograms.id, { onDelete: "cascade" }),
+
+  // Term this standing was determined for
+  termId: uuid("term_id").notNull(), // References core.terms
+
+  // Policy used for determination
+  policyId: uuid("policy_id")
+    .references(() => academicStandingPolicies.id),
+
+  // Standing result
+  standing: varchar("standing", { length: 30 }).notNull(), // good_standing, academic_warning, academic_probation, academic_suspension, academic_dismissal, reinstated
+  previousStanding: varchar("previous_standing", { length: 30 }),
+
+  // GPA at time of determination
+  termGpa: decimal("term_gpa", { precision: 4, scale: 3 }),
+  cumulativeGpa: decimal("cumulative_gpa", { precision: 4, scale: 3 }),
+  termCreditsAttempted: decimal("term_credits_attempted", { precision: 8, scale: 2 }),
+  termCreditsEarned: decimal("term_credits_earned", { precision: 8, scale: 2 }),
+  cumulativeCreditsAttempted: decimal("cumulative_credits_attempted", { precision: 8, scale: 2 }),
+  cumulativeCreditsEarned: decimal("cumulative_credits_earned", { precision: 8, scale: 2 }),
+
+  // Probation tracking
+  consecutiveProbationTerms: integer("consecutive_probation_terms").default(0),
+  totalProbationTerms: integer("total_probation_terms").default(0),
+  totalSuspensions: integer("total_suspensions").default(0),
+
+  // Reason/notes
+  reason: text("reason"), // Auto-generated or manual explanation
+  internalNotes: text("internal_notes"), // For staff only
+
+  // Whether this was calculated automatically or manually set
+  isAutomatic: boolean("is_automatic").default(true).notNull(),
+
+  // Who made the determination (for manual changes)
+  determinedBy: uuid("determined_by").references(() => users.id),
+  determinedAt: timestamp("determined_at", { withTimezone: true }).defaultNow().notNull(),
+
+  // Notification tracking
+  studentNotifiedAt: timestamp("student_notified_at", { withTimezone: true }),
+  notificationMethod: varchar("notification_method", { length: 30 }), // email, letter, portal
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  studentIdx: index("academic_standing_history_student_idx").on(table.studentId),
+  termIdx: index("academic_standing_history_term_idx").on(table.termId),
+  studentTermIdx: index("academic_standing_history_student_term_idx").on(table.studentId, table.termId),
+  standingIdx: index("academic_standing_history_standing_idx").on(table.standing),
+}));
+
+/**
+ * Academic Standing Appeals - tracks student appeals of standing decisions
+ */
+export const academicStandingAppeals = studentSchema.table("academic_standing_appeals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  standingHistoryId: uuid("standing_history_id")
+    .notNull()
+    .references(() => academicStandingHistory.id, { onDelete: "cascade" }),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => students.id, { onDelete: "cascade" }),
+
+  // Appeal details
+  appealDate: date("appeal_date").notNull(),
+  appealReason: text("appeal_reason").notNull(),
+  supportingDocuments: jsonb("supporting_documents").$type<{
+    fileName: string;
+    fileUrl: string;
+    uploadedAt: string;
+  }[]>(),
+
+  // Academic plan (required for some appeals)
+  academicPlanSubmitted: boolean("academic_plan_submitted").default(false),
+  academicPlanDetails: text("academic_plan_details"),
+
+  // Review process
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, under_review, approved, denied, withdrawn
+  reviewedBy: uuid("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewNotes: text("review_notes"),
+
+  // If approved, what is the new standing?
+  resultingStanding: varchar("resulting_standing", { length: 30 }),
+
+  // Conditions of approval (if any)
+  approvalConditions: text("approval_conditions"),
+  conditionsMet: boolean("conditions_met"),
+  conditionsMetDate: date("conditions_met_date"),
+
+  // Notification
+  studentNotifiedAt: timestamp("student_notified_at", { withTimezone: true }),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  standingHistoryIdx: index("academic_standing_appeals_standing_history_idx").on(table.standingHistoryId),
+  studentIdx: index("academic_standing_appeals_student_idx").on(table.studentId),
+  statusIdx: index("academic_standing_appeals_status_idx").on(table.status),
+}));
+
+// Academic Standing Relations
+export const academicStandingPoliciesRelations = relations(academicStandingPolicies, ({ one, many }) => ({
+  institution: one(institutions, {
+    fields: [academicStandingPolicies.institutionId],
+    references: [institutions.id],
+  }),
+  standingHistory: many(academicStandingHistory),
+}));
+
+export const academicStandingHistoryRelations = relations(academicStandingHistory, ({ one, many }) => ({
+  student: one(students, {
+    fields: [academicStandingHistory.studentId],
+    references: [students.id],
+  }),
+  studentProgram: one(studentPrograms, {
+    fields: [academicStandingHistory.studentProgramId],
+    references: [studentPrograms.id],
+  }),
+  policy: one(academicStandingPolicies, {
+    fields: [academicStandingHistory.policyId],
+    references: [academicStandingPolicies.id],
+  }),
+  determinedByUser: one(users, {
+    fields: [academicStandingHistory.determinedBy],
+    references: [users.id],
+  }),
+  appeals: many(academicStandingAppeals),
+}));
+
+export const academicStandingAppealsRelations = relations(academicStandingAppeals, ({ one }) => ({
+  standingHistory: one(academicStandingHistory, {
+    fields: [academicStandingAppeals.standingHistoryId],
+    references: [academicStandingHistory.id],
+  }),
+  student: one(students, {
+    fields: [academicStandingAppeals.studentId],
+    references: [students.id],
+  }),
+  reviewedByUser: one(users, {
+    fields: [academicStandingAppeals.reviewedBy],
+    references: [users.id],
+  }),
+}));

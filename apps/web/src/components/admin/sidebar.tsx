@@ -6,10 +6,16 @@ import {
   Users,
   BookOpen,
   Calendar,
+  CalendarDays,
   AlertCircle,
+  ShieldAlert,
+  Clock,
   BarChart3,
+  FileSpreadsheet,
   LayoutDashboard,
   ClipboardList,
+  GraduationCap,
+  Scale,
 } from "lucide-react";
 
 const navigation = [
@@ -29,6 +35,11 @@ const navigation = [
     icon: ClipboardList,
   },
   {
+    name: "Reg Control",
+    href: "/admin/registration-control",
+    icon: Clock,
+  },
+  {
     name: "Enrollments",
     href: "/admin/enrollments",
     icon: BookOpen,
@@ -39,9 +50,34 @@ const navigation = [
     icon: Calendar,
   },
   {
+    name: "Terms",
+    href: "/admin/terms",
+    icon: CalendarDays,
+  },
+  {
     name: "Holds",
     href: "/admin/holds",
     icon: AlertCircle,
+  },
+  {
+    name: "Hold Types",
+    href: "/admin/hold-types",
+    icon: ShieldAlert,
+  },
+  {
+    name: "Census",
+    href: "/admin/census",
+    icon: FileSpreadsheet,
+  },
+  {
+    name: "Degree Audit",
+    href: "/admin/degree-audit",
+    icon: GraduationCap,
+  },
+  {
+    name: "Ac. Standing",
+    href: "/admin/academic-standing",
+    icon: Scale,
   },
   {
     name: "Reports",

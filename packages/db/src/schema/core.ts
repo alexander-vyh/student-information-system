@@ -163,6 +163,49 @@ export const terms = coreSchema.table("terms", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Term Sessions (Part-of-Term) - for accelerated terms, 8-week sessions, etc.
+export const termSessions = coreSchema.table("term_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  institutionId: uuid("institution_id")
+    .notNull()
+    .references(() => institutions.id),
+  termId: uuid("term_id")
+    .notNull()
+    .references(() => terms.id),
+
+  code: varchar("code", { length: 20 }).notNull(), // e.g., "FULL", "1ST8", "2ND8"
+  name: varchar("name", { length: 100 }).notNull(), // e.g., "Full Term", "First 8-Week"
+
+  // Session dates
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  censusDate: date("census_date"),
+
+  // Registration/add-drop dates (override term-level if set)
+  addDeadline: date("add_deadline"),
+  dropDeadline: date("drop_deadline"),
+  withdrawalDeadline: date("withdrawal_deadline"),
+
+  // Refund dates for this session
+  refundDeadline100: date("refund_deadline_100"),
+  refundDeadline75: date("refund_deadline_75"),
+  refundDeadline50: date("refund_deadline_50"),
+  refundDeadline25: date("refund_deadline_25"),
+
+  // Aid disbursement for this session
+  aidDisbursementDate: date("aid_disbursement_date"),
+
+  // Is this the default/full-term session?
+  isDefault: boolean("is_default").default(false),
+
+  // For sorting/ordering
+  sortOrder: integer("sort_order").default(0),
+
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Academic Calendar Events
 export const calendarEvents = coreSchema.table("calendar_events", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -258,7 +301,19 @@ export const termsRelations = relations(terms, ({ one, many }) => ({
     fields: [terms.academicYearId],
     references: [academicYears.id],
   }),
+  sessions: many(termSessions),
   calendarEvents: many(calendarEvents),
+}));
+
+export const termSessionsRelations = relations(termSessions, ({ one }) => ({
+  institution: one(institutions, {
+    fields: [termSessions.institutionId],
+    references: [institutions.id],
+  }),
+  term: one(terms, {
+    fields: [termSessions.termId],
+    references: [terms.id],
+  }),
 }));
 
 export const calendarEventsRelations = relations(calendarEvents, ({ one }) => ({

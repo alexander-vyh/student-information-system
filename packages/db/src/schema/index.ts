@@ -18,3 +18,9 @@ export * from "./financial.js";
 
 // Aid schema - financial aid, SAP, R2T4
 export * from "./aid.js";
+
+// Scheduling schema - course scheduling, room assignments, instructor workload
+export * from "./scheduling.js";
+
+// System schema - CDC, configuration, infrastructure
+export * from "./system.js";
