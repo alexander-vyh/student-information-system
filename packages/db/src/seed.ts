@@ -522,7 +522,7 @@ async function seed() {
   const departmentIds: Record<string, string> = {};
   const subjectIds: Record<string, string> = {};
   const courseIds: string[] = [];
-  const courseData: Array<{ id: string; subjectId: string; number: string; title: string; credits: number }> = [];
+  const courseData: Array<{ id: string; subjectId: string; departmentId: string; number: string; title: string; credits: number }> = [];
 
   for (const [deptName, deptInfo] of Object.entries(DEPARTMENT_COURSES)) {
     const deptId = generateId();
@@ -555,6 +555,7 @@ async function seed() {
       courseData.push({
         id: courseId,
         subjectId,
+        departmentId: deptId,
         number: courseNum.toString(),
         title: courseTitle,
         credits,
@@ -570,6 +571,7 @@ async function seed() {
       id: c.id,
       institutionId: IDS.institution,
       subjectId: c.subjectId,
+      departmentId: c.departmentId,
       courseNumber: c.number,
       courseCode: `${Object.entries(subjectIds).find(([, id]) => id === c.subjectId)?.[0]} ${c.number}`,
       title: c.title,
@@ -863,20 +865,39 @@ async function seed() {
   }
   console.log("");
 
-  // Insert student programs
+  // Insert student programs (10% graduated, 5% withdrawn, 85% active)
   console.log("  Assigning programs...");
+  const graduatedCount = Math.floor(studentBatches.length * 0.1);
+  const withdrawnCount = Math.floor(studentBatches.length * 0.05);
+
   for (let i = 0; i < studentBatches.length; i += 100) {
     const batch = studentBatches.slice(i, i + 100);
     await db.insert(studentPrograms).values(
-      batch.map((s) => ({
-        id: generateId(),
-        studentId: s.studentId,
-        programId: s.programId,
-        catalogYearId: faker.helpers.arrayElement([IDS.catalog2023, IDS.catalog2024]),
-        status: "active",
-        isPrimary: true,
-        admitDate: faker.date.past({ years: 3 }).toISOString().split("T")[0],
-      }))
+      batch.map((s, batchIdx) => {
+        const globalIdx = i + batchIdx;
+        let status: string;
+        let actualGraduationDate: string | null = null;
+
+        if (globalIdx < graduatedCount) {
+          status = "graduated";
+          actualGraduationDate = faker.date.past({ years: 1 }).toISOString().split("T")[0];
+        } else if (globalIdx < graduatedCount + withdrawnCount) {
+          status = "withdrawn";
+        } else {
+          status = "active";
+        }
+
+        return {
+          id: generateId(),
+          studentId: s.studentId,
+          programId: s.programId,
+          catalogYearId: faker.helpers.arrayElement([IDS.catalog2023, IDS.catalog2024]),
+          status,
+          isPrimary: true,
+          admitDate: faker.date.past({ years: 3 }).toISOString().split("T")[0],
+          actualGraduationDate,
+        };
+      })
     );
     process.stdout.write(`\r  Programs: ${Math.min(i + 100, studentBatches.length)}/${studentBatches.length}`);
   }

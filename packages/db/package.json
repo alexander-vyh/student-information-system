@@ -21,12 +21,14 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/seed.ts",
+    "db:analytics": "tsx src/analytics/cli.ts",
     "studio": "drizzle-kit studio",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@faker-js/faker": "^10.1.0",
     "drizzle-orm": "^0.36.4",
+    "duckdb": "^1.4.3",
     "postgres": "^3.4.5"
   },
   "devDependencies": {
