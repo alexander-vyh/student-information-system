@@ -11,6 +11,7 @@ import { z } from "zod";
 import { db } from "@sis/db";
 import { eq } from "drizzle-orm";
 import { users, sessions, students } from "@sis/db/schema";
+import { verifyPassword, needsRehash, hashPassword } from "./password";
 
 /**
  * Credential validation schema
@@ -121,8 +122,8 @@ export const authConfig: NextAuthConfig = {
     /**
      * Credentials provider for email/password authentication
      *
-     * In production, this should use proper password hashing (bcrypt/argon2)
-     * and rate limiting.
+     * Uses bcrypt for password hashing (see ./password.ts).
+     * Rate limiting is handled by middleware.
      */
     Credentials({
       name: "credentials",
@@ -160,16 +161,20 @@ export const authConfig: NextAuthConfig = {
           return null;
         }
 
-        // Verify password
-        // TODO: Replace with proper password verification
-        // const validPassword = await verifyPassword(password, user.passwordHash);
-        const validPassword = await verifyPasswordTemporary(
-          password,
-          user.passwordHash
-        );
+        // Verify password using bcrypt
+        const validPassword = await verifyPassword(password, user.passwordHash);
 
         if (!validPassword) {
           return null;
+        }
+
+        // Check if password hash needs to be upgraded (cost factor increased)
+        if (user.passwordHash && needsRehash(user.passwordHash)) {
+          const newHash = await hashPassword(password);
+          await db
+            .update(users)
+            .set({ passwordHash: newHash })
+            .where(eq(users.id, user.id));
         }
 
         // Update last login
@@ -229,22 +234,3 @@ export const authConfig: NextAuthConfig = {
   debug: process.env["NODE_ENV"] === "development",
 };
 
-/**
- * Temporary password verification (replace with proper bcrypt/argon2)
- */
-async function verifyPasswordTemporary(
-  password: string,
-  hash: string | null
-): Promise<boolean> {
-  if (!hash) return false;
-
-  // TODO: Replace with proper bcrypt.compare or argon2.verify
-  // For development, accept a simple hash comparison
-  // In production, NEVER use this - use proper password hashing!
-  if (process.env["NODE_ENV"] === "development") {
-    // Simple dev-only check (remove in production)
-    return hash === `dev_${password}`;
-  }
-
-  return false;
-}

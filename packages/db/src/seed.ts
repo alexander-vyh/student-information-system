@@ -7,6 +7,7 @@
 
 import "dotenv/config";
 import { faker } from "@faker-js/faker";
+import bcrypt from "bcryptjs";
 import { db } from "./index.js";
 import {
   institutions,
@@ -45,6 +46,17 @@ import {
 // Use fixed seed for reproducibility
 faker.seed(42);
 
+// Pre-compute bcrypt hashes (synchronous for seed script simplicity)
+// Using cost factor 10 for faster seeding; production uses 12
+const BCRYPT_ROUNDS = 10;
+const passwordHashes = {
+  admin: bcrypt.hashSync("admin123", BCRYPT_ROUNDS),
+  registrar: bcrypt.hashSync("registrar123", BCRYPT_ROUNDS),
+  advisor: bcrypt.hashSync("advisor123", BCRYPT_ROUNDS),
+  faculty: bcrypt.hashSync("faculty123", BCRYPT_ROUNDS),
+  student: bcrypt.hashSync("student123", BCRYPT_ROUNDS),
+};
+
 // Configuration
 const CONFIG = {
   numStudents: 500,
@@ -62,6 +74,13 @@ function generateId(): string {
 
 // Store IDs for reference
 const IDS: Record<string, string> = {};
+
+/** Helper to get ID with non-null assertion */
+function getId(key: string): string {
+  const id = IDS[key];
+  if (!id) throw new Error(`Missing ID: ${key}`);
+  return id;
+}
 
 // Grade distribution for realistic GPAs
 const GRADE_DISTRIBUTION = [
@@ -253,9 +272,9 @@ async function seed() {
 
   // 1. Institution
   console.log("Creating institution...");
-  IDS.institution = generateId();
+  IDS["institution"] = generateId();
   await db.insert(institutions).values({
-    id: IDS.institution,
+    id: getId("institution"),
     code: "DEMO",
     name: "Demo University",
     shortName: "Demo U",
@@ -266,23 +285,23 @@ async function seed() {
 
   // 2. Campuses
   console.log("Creating campuses...");
-  IDS.mainCampus = generateId();
-  IDS.onlineCampus = generateId();
+  IDS["mainCampus"] = generateId();
+  IDS["onlineCampus"] = generateId();
   await db.insert(campuses).values([
     {
-      id: IDS.mainCampus,
-      institutionId: IDS.institution,
+      id: getId("mainCampus"),
+      institutionId: getId("institution"),
       code: "MAIN",
       name: "Main Campus",
       isMainCampus: true,
-      address: faker.location.streetAddress(),
+      address1: faker.location.streetAddress(),
       city: faker.location.city(),
       state: faker.location.state({ abbreviated: true }),
       postalCode: faker.location.zipCode(),
     },
     {
-      id: IDS.onlineCampus,
-      institutionId: IDS.institution,
+      id: getId("onlineCampus"),
+      institutionId: getId("institution"),
       code: "ONLINE",
       name: "Online Campus",
       isMainCampus: false,
@@ -323,7 +342,7 @@ async function seed() {
   await db.insert(terms).values(
     termData.map((t) => ({
       id: t.id,
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       code: t.code,
       name: t.name,
       termType: t.type,
@@ -347,7 +366,7 @@ async function seed() {
     buildingIds.push(id);
     await db.insert(buildings).values({
       id,
-      campusId: IDS.mainCampus,
+      campusId: getId("mainCampus"),
       code: name.split(" ").map((w) => w[0]).join(""),
       name,
     });
@@ -386,7 +405,7 @@ async function seed() {
   await db.insert(roles).values(
     roleData.map((r) => ({
       id: IDS[`role${r.code}`],
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       code: r.code,
       name: r.name,
       description: r.description,
@@ -399,7 +418,7 @@ async function seed() {
   await db.insert(holdTypes).values([
     {
       id: generateId(),
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       code: "ACADEMIC",
       name: "Academic Hold",
       description: "Placed for academic issues",
@@ -411,7 +430,7 @@ async function seed() {
     },
     {
       id: generateId(),
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       code: "FINANCIAL",
       name: "Financial Hold",
       description: "Outstanding balance on account",
@@ -423,7 +442,7 @@ async function seed() {
     },
     {
       id: generateId(),
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       code: "ADVISING",
       name: "Advising Hold",
       description: "Must meet with advisor before registration",
@@ -440,9 +459,9 @@ async function seed() {
   const now = new Date();
 
   const staffUsers = [
-    { email: "admin@demo.edu", password: "admin123", firstName: "Admin", lastName: "User", role: "ADMIN" },
-    { email: "registrar@demo.edu", password: "registrar123", firstName: "Rachel", lastName: "Registrar", role: "REGISTRAR" },
-    { email: "advisor@demo.edu", password: "advisor123", firstName: "Adam", lastName: "Advisor", role: "ADVISOR" },
+    { email: "admin@demo.edu", hashKey: "admin" as const, firstName: "Admin", lastName: "User", role: "ADMIN" },
+    { email: "registrar@demo.edu", hashKey: "registrar" as const, firstName: "Rachel", lastName: "Registrar", role: "REGISTRAR" },
+    { email: "advisor@demo.edu", hashKey: "advisor" as const, firstName: "Adam", lastName: "Advisor", role: "ADVISOR" },
   ];
 
   for (const staff of staffUsers) {
@@ -451,9 +470,9 @@ async function seed() {
 
     await db.insert(users).values({
       id: userId,
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       email: staff.email,
-      passwordHash: `dev_${staff.password}`,
+      passwordHash: passwordHashes[staff.hashKey],
       firstName: staff.firstName,
       lastName: staff.lastName,
       status: "active",
@@ -462,7 +481,7 @@ async function seed() {
 
     await db.insert(userRoles).values({
       userId,
-      roleId: IDS[`role${staff.role}`],
+      roleId: getId(`role${staff.role}`),
     });
   }
 
@@ -477,9 +496,9 @@ async function seed() {
 
     await db.insert(users).values({
       id: userId,
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@demo.edu`,
-      passwordHash: "dev_faculty123",
+      passwordHash: passwordHashes.faculty,
       firstName,
       lastName,
       status: "active",
@@ -488,34 +507,34 @@ async function seed() {
 
     await db.insert(userRoles).values({
       userId,
-      roleId: IDS.roleINSTRUCTOR,
+      roleId: getId("roleINSTRUCTOR"),
     });
   }
 
   // 9. Academic Structure
   console.log("Creating academic structure...");
-  IDS.college = generateId();
+  IDS["college"] = generateId();
   await db.insert(colleges).values({
-    id: IDS.college,
-    institutionId: IDS.institution,
+    id: getId("college"),
+    institutionId: getId("institution"),
     code: "CAS",
     name: "College of Arts & Sciences",
   });
 
   // Degree Types
-  IDS.degreeBA = generateId();
-  IDS.degreeBS = generateId();
+  IDS["degreeBA"] = generateId();
+  IDS["degreeBS"] = generateId();
   await db.insert(degreeTypes).values([
-    { id: IDS.degreeBA, institutionId: IDS.institution, code: "BA", name: "Bachelor of Arts", level: "undergraduate" },
-    { id: IDS.degreeBS, institutionId: IDS.institution, code: "BS", name: "Bachelor of Science", level: "undergraduate" },
+    { id: getId("degreeBA"), institutionId: getId("institution"), code: "BA", name: "Bachelor of Arts", level: "undergraduate" },
+    { id: getId("degreeBS"), institutionId: getId("institution"), code: "BS", name: "Bachelor of Science", level: "undergraduate" },
   ]);
 
   // Catalog Years
-  IDS.catalog2023 = generateId();
-  IDS.catalog2024 = generateId();
+  IDS["catalog2023"] = generateId();
+  IDS["catalog2024"] = generateId();
   await db.insert(catalogYears).values([
-    { id: IDS.catalog2023, institutionId: IDS.institution, code: "2023-2024", name: "2023-2024 Catalog", startDate: "2023-08-01", endDate: "2024-07-31", isActive: true },
-    { id: IDS.catalog2024, institutionId: IDS.institution, code: "2024-2025", name: "2024-2025 Catalog", startDate: "2024-08-01", endDate: "2025-07-31", isActive: true },
+    { id: getId("catalog2023"), institutionId: getId("institution"), code: "2023-2024", name: "2023-2024 Catalog", startDate: "2023-08-01", endDate: "2024-07-31", isActive: true },
+    { id: getId("catalog2024"), institutionId: getId("institution"), code: "2024-2025", name: "2024-2025 Catalog", startDate: "2024-08-01", endDate: "2025-07-31", isActive: true },
   ]);
 
   // Departments, Subjects, and Courses
@@ -532,14 +551,14 @@ async function seed() {
 
     await db.insert(departments).values({
       id: deptId,
-      collegeId: IDS.college,
+      collegeId: getId("college"),
       code: deptInfo.prefix,
       name: deptName,
     });
 
     await db.insert(subjects).values({
       id: subjectId,
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       code: deptInfo.prefix,
       name: deptName,
       departmentId: deptId,
@@ -569,7 +588,7 @@ async function seed() {
   await db.insert(courses).values(
     courseData.map((c) => ({
       id: c.id,
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       subjectId: c.subjectId,
       departmentId: c.departmentId,
       courseNumber: c.number,
@@ -584,12 +603,12 @@ async function seed() {
   // 10. Programs
   console.log("Creating programs...");
   const programData = [
-    { name: "Computer Science", dept: "Computer Science", degree: IDS.degreeBS, prefix: "CS" },
-    { name: "Business Administration", dept: "Business Administration", degree: IDS.degreeBS, prefix: "BUS" },
-    { name: "Biology", dept: "Biology", degree: IDS.degreeBS, prefix: "BIO" },
-    { name: "English", dept: "English", degree: IDS.degreeBA, prefix: "ENG" },
-    { name: "Mathematics", dept: "Mathematics", degree: IDS.degreeBS, prefix: "MATH" },
-    { name: "Psychology", dept: "Psychology", degree: IDS.degreeBA, prefix: "PSY" },
+    { name: "Computer Science", dept: "Computer Science", degree: getId("degreeBS"), prefix: "CS" },
+    { name: "Business Administration", dept: "Business Administration", degree: getId("degreeBS"), prefix: "BUS" },
+    { name: "Biology", dept: "Biology", degree: getId("degreeBS"), prefix: "BIO" },
+    { name: "English", dept: "English", degree: getId("degreeBA"), prefix: "ENG" },
+    { name: "Mathematics", dept: "Mathematics", degree: getId("degreeBS"), prefix: "MATH" },
+    { name: "Psychology", dept: "Psychology", degree: getId("degreeBA"), prefix: "PSY" },
   ];
 
   const programIds: string[] = [];
@@ -600,12 +619,12 @@ async function seed() {
 
     await db.insert(programs).values({
       id,
-      institutionId: IDS.institution,
-      departmentId: departmentIds[prog.dept],
+      institutionId: getId("institution"),
+      departmentId: departmentIds[prog.dept]!,
       degreeTypeId: prog.degree,
       code: prog.prefix,
       name: `${prog.name} Major`,
-      totalCreditsRequired: "120.00",
+      totalCredits: "120.00",
       isActive: true,
     });
   }
@@ -648,10 +667,10 @@ async function seed() {
 
   // 12. Grade Scale
   console.log("Creating grade scale...");
-  IDS.gradeScale = generateId();
+  IDS["gradeScale"] = generateId();
   await db.insert(gradeScales).values({
-    id: IDS.gradeScale,
-    institutionId: IDS.institution,
+    id: getId("gradeScale"),
+    institutionId: getId("institution"),
     code: "STD",
     name: "Standard Letter Grades",
     isDefault: true,
@@ -680,7 +699,7 @@ async function seed() {
 
   await db.insert(grades).values(
     gradeValues.map((g) => ({
-      gradeScaleId: IDS.gradeScale,
+      gradeScaleId: getId("gradeScale"),
       gradeCode: g.code,
       gradePoints: g.points,
       displayOrder: g.order,
@@ -703,7 +722,7 @@ async function seed() {
     categoryIds[cat.code] = id;
     await db.insert(requirementCategories).values({
       id,
-      institutionId: IDS.institution,
+      institutionId: getId("institution"),
       code: cat.code,
       name: cat.name,
       displayOrder: cat.order,
@@ -714,15 +733,15 @@ async function seed() {
   // 14. Program Requirements
   console.log("Creating program requirements...");
   for (const prog of programData) {
-    const progId = IDS[`program${prog.prefix}`];
+    const progId = getId(`program${prog.prefix}`);
 
     // General Education requirement
     const genEdReqId = generateId();
     await db.insert(programRequirements).values({
       id: genEdReqId,
       programId: progId,
-      catalogYearId: IDS.catalog2024,
-      categoryId: categoryIds.GEN_ED,
+      catalogYearId: getId("catalog2024"),
+      categoryId: categoryIds["GEN_ED"]!,
       name: "General Education Requirements",
       minimumCredits: "30.00",
       displayOrder: 1,
@@ -734,8 +753,8 @@ async function seed() {
     await db.insert(programRequirements).values({
       id: coreReqId,
       programId: progId,
-      catalogYearId: IDS.catalog2024,
-      categoryId: categoryIds.MAJOR_CORE,
+      catalogYearId: getId("catalog2024"),
+      categoryId: categoryIds["MAJOR_CORE"]!,
       name: `${prog.name} Core Courses`,
       minimumCredits: "45.00",
       minimumGpa: "2.000",
@@ -746,10 +765,12 @@ async function seed() {
     // Link some courses to requirements
     const deptCourses = courseData.filter((c) => c.subjectId === subjectIds[prog.prefix]);
     for (let i = 0; i < Math.min(5, deptCourses.length); i++) {
+      const course = deptCourses[i];
+      if (!course) continue;
       await db.insert(requirementCourses).values({
         id: generateId(),
         requirementId: coreReqId,
-        courseId: deptCourses[i].id,
+        courseId: course.id,
         isRequired: i < 3,
         minimumGrade: "C",
       });
@@ -758,10 +779,10 @@ async function seed() {
 
   // 15. Academic Standing Policy
   console.log("Creating academic standing policy...");
-  IDS.standingPolicy = generateId();
+  IDS["standingPolicy"] = generateId();
   await db.insert(academicStandingPolicies).values({
-    id: IDS.standingPolicy,
-    institutionId: IDS.institution,
+    id: getId("standingPolicy"),
+    institutionId: getId("institution"),
     name: "Standard Undergraduate Policy",
     code: "UG_STANDARD",
     description: "Standard academic standing policy for undergraduate students",
@@ -812,7 +833,7 @@ async function seed() {
       lastName,
       email,
       programId: faker.helpers.arrayElement(programIds),
-      gpaTarget: gpaTargets[i],
+      gpaTarget: gpaTargets[i] ?? 3.0,
     });
   }
 
@@ -823,9 +844,9 @@ async function seed() {
     await db.insert(users).values(
       batch.map((s) => ({
         id: s.userId,
-        institutionId: IDS.institution,
+        institutionId: getId("institution"),
         email: s.email,
-        passwordHash: "dev_student123",
+        passwordHash: passwordHashes.student,
         firstName: s.firstName,
         lastName: s.lastName,
         status: "active",
@@ -836,7 +857,7 @@ async function seed() {
     await db.insert(userRoles).values(
       batch.map((s) => ({
         userId: s.userId,
-        roleId: IDS.roleSTUDENT,
+        roleId: getId("roleSTUDENT"),
       }))
     );
 
@@ -851,7 +872,7 @@ async function seed() {
     await db.insert(students).values(
       batch.map((s, idx) => ({
         id: s.studentId,
-        institutionId: IDS.institution,
+        institutionId: getId("institution"),
         userId: s.userId,
         studentId: `STU${(i + idx + 1).toString().padStart(6, "0")}`,
         legalFirstName: s.firstName,
@@ -880,7 +901,7 @@ async function seed() {
 
         if (globalIdx < graduatedCount) {
           status = "graduated";
-          actualGraduationDate = faker.date.past({ years: 1 }).toISOString().split("T")[0];
+          actualGraduationDate = faker.date.past({ years: 1 }).toISOString().split("T")[0] ?? null;
         } else if (globalIdx < graduatedCount + withdrawnCount) {
           status = "withdrawn";
         } else {
@@ -891,7 +912,7 @@ async function seed() {
           id: generateId(),
           studentId: s.studentId,
           programId: s.programId,
-          catalogYearId: faker.helpers.arrayElement([IDS.catalog2023, IDS.catalog2024]),
+          catalogYearId: faker.helpers.arrayElement([getId("catalog2023"), getId("catalog2024")]),
           status,
           isPrimary: true,
           admitDate: faker.date.past({ years: 3 }).toISOString().split("T")[0],
@@ -938,15 +959,16 @@ async function seed() {
   // Group sections by term for easy lookup
   const sectionsByTerm: Record<string, typeof sectionData> = {};
   for (const section of sectionData) {
-    if (!sectionsByTerm[section.termId]) sectionsByTerm[section.termId] = [];
-    sectionsByTerm[section.termId].push(section);
+    const termId = section.termId;
+    if (!sectionsByTerm[termId]) sectionsByTerm[termId] = [];
+    sectionsByTerm[termId]!.push(section);
   }
 
   // Sort terms chronologically
   const sortedTerms = [...termData].sort((a, b) => a.year - b.year || (a.type === "spring" ? 0 : 1) - (b.type === "spring" ? 0 : 1));
 
   for (let si = 0; si < studentBatches.length; si++) {
-    const student = studentBatches[si];
+    const student = studentBatches[si]!;
     const numTerms = faker.number.int(CONFIG.termsPerStudent);
     const enrolledTerms = sortedTerms.slice(0, numTerms);
 
@@ -1070,7 +1092,7 @@ async function seed() {
         id: h.id,
         studentId: h.studentId,
         termId: h.termId,
-        policyId: IDS.standingPolicy,
+        policyId: getId("standingPolicy"),
         standing: h.standing,
         previousStanding: h.prevStanding,
         termGpa: h.termGpa.toFixed(3),
@@ -1094,10 +1116,9 @@ async function seed() {
 
   for (const standing of studentsNeedingAppeals) {
     await db.insert(academicStandingAppeals).values({
-      id: generateId(),
       standingHistoryId: standing.id,
       studentId: standing.studentId,
-      appealDate: faker.date.recent({ days: 30 }).toISOString().split("T")[0],
+      appealDate: faker.date.recent({ days: 30 }).toISOString().split("T")[0]!,
       appealReason: faker.lorem.paragraphs(2),
       status: faker.helpers.arrayElement(["pending", "pending", "pending", "under_review", "approved"]),
       academicPlanSubmitted: faker.datatype.boolean(),

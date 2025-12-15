@@ -27,7 +27,7 @@ export interface AnalyticsDb {
  * All queries run against PostgreSQL in READ_ONLY mode.
  */
 export function createAnalyticsDb(
-  pgUrl: string = process.env.DATABASE_URL!
+  pgUrl: string = process.env["DATABASE_URL"]!
 ): Promise<AnalyticsDb> {
   return new Promise((resolve, reject) => {
     const db = new duckdb.Database(":memory:");

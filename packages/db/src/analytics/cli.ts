@@ -44,7 +44,13 @@ function formatTable(rows: Record<string, unknown>[]): void {
     return;
   }
 
-  const columns = Object.keys(rows[0]);
+  const firstRow = rows[0];
+  if (!firstRow) {
+    log("(no results)", "dim");
+    return;
+  }
+
+  const columns = Object.keys(firstRow);
   const widths = columns.map((col) => {
     const maxVal = Math.max(
       col.length,
@@ -55,7 +61,7 @@ function formatTable(rows: Record<string, unknown>[]): void {
 
   // Header
   const header = columns
-    .map((col, i) => col.padEnd(widths[i]))
+    .map((col, i) => col.padEnd(widths[i] ?? 10))
     .join(" | ");
   const separator = widths.map((w) => "-".repeat(w)).join("-+-");
 
@@ -67,9 +73,10 @@ function formatTable(rows: Record<string, unknown>[]): void {
     const line = columns
       .map((col, i) => {
         const val = String(row[col] ?? "");
-        return val.length > widths[i]
-          ? val.slice(0, widths[i] - 1) + "~"
-          : val.padEnd(widths[i]);
+        const width = widths[i] ?? 10;
+        return val.length > width
+          ? val.slice(0, width - 1) + "~"
+          : val.padEnd(width);
       })
       .join(" | ");
     console.log(line);
@@ -204,7 +211,7 @@ async function main() {
   const args = process.argv.slice(2);
 
   // Check for DATABASE_URL
-  if (!process.env.DATABASE_URL) {
+  if (!process.env["DATABASE_URL"]) {
     log("Error: DATABASE_URL environment variable not set", "red");
     process.exit(1);
   }
@@ -215,7 +222,7 @@ async function main() {
     const analytics = await createAnalyticsDb();
     log("Connected!\n", "green");
 
-    if (args.length > 0) {
+    if (args.length > 0 && args[0]) {
       // Non-interactive: run named query
       const queryName = args[0];
       try {

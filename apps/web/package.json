@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.37.2",
+    "bcryptjs": "^2.4.3",
     "@sis/api": "workspace:*",
     "@sis/db": "workspace:*",
     "@sis/domain": "workspace:*",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@sis/typescript-config": "workspace:*",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.9.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
