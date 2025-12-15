@@ -10,7 +10,7 @@ import {
   protectedProcedure,
   canAccessStudent,
 } from "../trpc.js";
-import { eq, and, inArray, isNull } from "drizzle-orm";
+import { eq, and, inArray, isNull, or, ilike, sql } from "drizzle-orm";
 import {
   students,
   studentAddresses,
@@ -80,10 +80,22 @@ export const studentRouter = router({
         return { students: [], total: 0 };
       }
 
-      // This is a simplified search - in production, use PostgreSQL full-text search
-      // or a dedicated search service
+      // Search across name, email, and student ID using case-insensitive matching
+      const searchPattern = `%${input.query}%`;
+
       const results = await ctx.db.query.students.findMany({
-        where: eq(students.institutionId, ctx.user!.institutionId),
+        where: and(
+          eq(students.institutionId, ctx.user!.institutionId),
+          or(
+            ilike(students.legalFirstName, searchPattern),
+            ilike(students.legalLastName, searchPattern),
+            ilike(students.preferredFirstName, searchPattern),
+            ilike(students.primaryEmail, searchPattern),
+            ilike(students.studentId, searchPattern),
+            // Also search "firstName lastName" combined
+            sql`CONCAT(${students.legalFirstName}, ' ', ${students.legalLastName}) ILIKE ${searchPattern}`
+          )
+        ),
         limit: input.limit,
         offset: input.offset,
         columns: {
