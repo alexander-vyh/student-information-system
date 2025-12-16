@@ -16,6 +16,7 @@ export type AuditCategory =
   | "enrollment" // Registration activities
   | "grade" // Grade viewing/changes
   | "transcript" // Transcript generation/access
+  | "graduation" // Graduation applications/conferral
   | "admin" // Administrative actions
   | "system"; // System events
 
@@ -34,7 +35,11 @@ export type AuditAction =
   | "logout"
   | "failed_login"
   | "permission_denied"
-  | "override";
+  | "override"
+  | "generate" // Generate document (transcript, report)
+  | "confer" // Confer degree
+  | "batch_confer" // Batch degree conferral
+  | "release"; // Release transcript/document
 
 /**
  * Resource types that can be audited
@@ -44,6 +49,11 @@ export type AuditResourceType =
   | "registration"
   | "grade"
   | "transcript"
+  | "transcript_request"
+  | "graduation_application"
+  | "degree_conferral"
+  | "diploma"
+  | "ceremony"
   | "financial_account"
   | "financial_aid"
   | "hold"

@@ -16,6 +16,8 @@ import {
   ClipboardList,
   GraduationCap,
   Scale,
+  FileText,
+  Award,
 } from "lucide-react";
 
 const navigation = [
@@ -80,6 +82,16 @@ const navigation = [
     icon: Scale,
   },
   {
+    name: "Transcripts",
+    href: "/admin/transcripts",
+    icon: FileText,
+  },
+  {
+    name: "Graduation",
+    href: "/admin/graduation",
+    icon: Award,
+  },
+  {
     name: "Reports",
     href: "/admin/reports",
     icon: BarChart3,
@@ -99,7 +111,11 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
         {navigation.map((item) => {
-          const isActive = pathname === item.href;
+          // Check if this route or any child route is active
+          const isActive =
+            item.href === "/admin"
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
 
           return (

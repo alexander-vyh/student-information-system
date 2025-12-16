@@ -22,3 +22,6 @@ export * from "./degree-audit/index.js";
 
 // Academic Standing
 export * from "./academic-standing/index.js";
+
+// Graduation / Conferral
+export * from "./graduation/index.js";

@@ -21,6 +21,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/seed.ts",
+    "db:seed:financial": "tsx src/seed-financial.ts",
     "db:analytics": "tsx src/analytics/cli.ts",
     "studio": "drizzle-kit studio",
     "clean": "rm -rf dist"

@@ -15,6 +15,10 @@ import { censusRouter } from "./routers/census.js";
 import { schedulingRouter } from "./routers/scheduling.js";
 import { degreeAuditRouter } from "./routers/degree-audit.js";
 import { academicStandingRouter } from "./routers/academic-standing.js";
+import { bursarRouter } from "./routers/bursar.js";
+import { transcriptRouter } from "./routers/transcript.js";
+import { graduationRouter } from "./routers/graduation.js";
+import { transferCreditRouter } from "./routers/transfer-credit.js";
 
 /**
  * Main application router
@@ -30,9 +34,12 @@ export const appRouter = router({
   scheduling: schedulingRouter,
   degreeAudit: degreeAuditRouter,
   academicStanding: academicStandingRouter,
+  bursar: bursarRouter,
+  transcript: transcriptRouter,
+  graduation: graduationRouter,
+  transferCredit: transferCreditRouter,
 
   // TODO: Add more routers as they are implemented
-  // financial: financialRouter,
   // aid: aidRouter,
   // curriculum: curriculumRouter,
 });

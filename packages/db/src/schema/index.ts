@@ -24,3 +24,6 @@ export * from "./scheduling.js";
 
 // System schema - CDC, configuration, infrastructure
 export * from "./system.js";
+
+// Registrar schema - transcripts, graduation, ceremonies
+export * from "./registrar.js";
