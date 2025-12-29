@@ -1,0 +1,129 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: sis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sis_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sis}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sis} -d ${POSTGRES_DB:-sis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for session cache and job queue
+  redis:
+    image: redis:7-alpine
+    container_name: sis-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO for S3-compatible object storage
+  minio:
+    image: minio/minio:latest
+    container_name: sis-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-sis_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-sis_minio_password}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Create default bucket on startup
+  minio-init:
+    image: minio/mc:latest
+    container_name: sis-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER:-sis_minio} $${MINIO_ROOT_PASSWORD:-sis_minio_password};
+      mc mb --ignore-existing myminio/documents;
+      mc mb --ignore-existing myminio/transcripts;
+      mc mb --ignore-existing myminio/financial-docs;
+      mc mb --ignore-existing myminio/photos;
+      exit 0;
+      "
+
+  # Mailpit for email testing (development only)
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: sis-mailpit
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_WEB_PORT:-8025}:8025"
+    profiles:
+      - dev
+
+  # Course Scheduler Service (Python/OR-Tools)
+  scheduler:
+    build:
+      context: ../services/scheduler
+      dockerfile: Dockerfile
+    container_name: sis-scheduler
+    restart: unless-stopped
+    environment:
+      SCHEDULER_DEBUG: ${SCHEDULER_DEBUG:-false}
+      SCHEDULER_LOG_LEVEL: ${SCHEDULER_LOG_LEVEL:-INFO}
+      SCHEDULER_DATABASE_URL: postgresql://${POSTGRES_USER:-sis}:${POSTGRES_PASSWORD:-sis_dev_password}@postgres:5432/${POSTGRES_DB:-sis}
+      SCHEDULER_REDIS_URL: redis://redis:6379/1
+      SCHEDULER_CALLBACK_BASE_URL: http://web:3000/api/trpc
+      SCHEDULER_SOLVER_TIME_LIMIT_SECONDS: ${SCHEDULER_TIME_LIMIT:-300}
+      SCHEDULER_SOLVER_NUM_WORKERS: ${SCHEDULER_WORKERS:-4}
+    ports:
+      - "${SCHEDULER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    profiles:
+      - scheduler
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  default:
+    name: sis-network
