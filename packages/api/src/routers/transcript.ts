@@ -27,10 +27,13 @@ import {
   termEnrollments,
   transcriptRequests,
   studentNameHistory,
+  institutions,
   type TranscriptType,
   type TranscriptDeliveryMethod,
   type TranscriptRequestStatus,
 } from "@sis/db/schema";
+import { TranscriptAssembler, type AssemblerInput } from "@sis/domain/transcript";
+import { generateTranscriptPDF } from "../transcript/pdf-generator.js";
 
 // =============================================================================
 // INPUT SCHEMAS
@@ -733,6 +736,208 @@ export const transcriptRouter = router({
       return {
         studentId: ctx.user!.studentId,
         message: "Use getTranscriptData with this studentId for full data",
+      };
+    }),
+
+  /**
+   * Generate and download unofficial transcript PDF
+   * MVP feature - generates PDF on demand for students
+   */
+  generateUnofficialPDF: protectedProcedure
+    .input(z.object({
+      studentId: z.string().uuid(),
+    }))
+    .use(canAccessStudent((input) => (input as { studentId: string }).studentId))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch student with all required relations
+      const student = await ctx.db.query.students.findFirst({
+        where: and(
+          eq(students.id, input.studentId),
+          eq(students.institutionId, ctx.user!.institutionId)
+        ),
+        with: {
+          programs: {
+            with: {
+              majors: true,
+            },
+          },
+          gpaSummary: true,
+        },
+      });
+
+      if (!student) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Student not found",
+        });
+      }
+
+      // Fetch institution
+      const institution = await ctx.db.query.institutions.findFirst({
+        where: eq(institutions.id, ctx.user!.institutionId),
+      });
+
+      if (!institution) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Institution not found",
+        });
+      }
+
+      // Fetch name history
+      const nameHistory = await ctx.db.query.studentNameHistory.findMany({
+        where: eq(studentNameHistory.studentId, input.studentId),
+        orderBy: [desc(studentNameHistory.effectiveFrom)],
+      });
+
+      // Fetch completed registrations with all related data
+      const registrationData = await ctx.db.query.registrations.findMany({
+        where: and(
+          eq(registrations.studentId, input.studentId),
+          eq(registrations.status, "completed")
+        ),
+        with: {
+          section: {
+            with: {
+              course: {
+                with: {
+                  subject: true,
+                },
+              },
+            },
+          },
+          term: true,
+          grade: true,
+        },
+        orderBy: [desc(registrations.registrationDate)],
+      });
+
+      // Fetch term enrollments
+      const termData = await ctx.db.query.termEnrollments.findMany({
+        where: eq(termEnrollments.studentId, input.studentId),
+        with: {
+          term: true,
+        },
+        orderBy: [desc(termEnrollments.termId)],
+      });
+
+      // Fetch transfer credits
+      const transfers = await ctx.db.query.transferCredits.findMany({
+        where: eq(transferCredits.studentId, input.studentId),
+        with: {
+          equivalentCourse: true,
+        },
+      });
+
+      // Group registrations by term
+      const termMap = new Map<string, typeof registrationData>();
+      for (const reg of registrationData) {
+        const termId = reg.termId;
+        if (!termMap.has(termId)) {
+          termMap.set(termId, []);
+        }
+        termMap.get(termId)!.push(reg);
+      }
+
+      // Build assembler input
+      const assemblerInput: AssemblerInput = {
+        student: {
+          id: student.id,
+          studentId: student.studentId,
+          firstName: student.legalFirstName,
+          middleName: student.legalMiddleName,
+          lastName: student.legalLastName,
+          suffix: student.suffix,
+          birthDate: student.dateOfBirth ? new Date(student.dateOfBirth) : new Date(),
+        },
+        institution: {
+          name: institution.name,
+          address1: institution.address1 ?? "",
+          city: institution.city ?? "",
+          state: institution.state ?? "",
+          postalCode: institution.postalCode ?? "",
+          registrarName: "Registrar",
+          registrarTitle: "University Registrar",
+        },
+        nameHistory: nameHistory.map((n) => ({
+          firstName: n.firstName,
+          middleName: n.middleName,
+          lastName: n.lastName,
+          suffix: n.suffix,
+          nameType: n.nameType,
+          effectiveFrom: new Date(n.effectiveFrom),
+          effectiveUntil: n.effectiveUntil ? new Date(n.effectiveUntil) : null,
+        })),
+        terms: Array.from(termMap.entries()).map(([termId, regs]) => {
+          const term = regs[0]?.term;
+
+          return {
+            termId,
+            termCode: term?.code ?? "",
+            termName: term?.name ?? "",
+            startDate: term?.startDate ? new Date(term.startDate) : new Date(),
+            endDate: term?.endDate ? new Date(term.endDate) : new Date(),
+            registrations: regs.map((reg) => ({
+              courseCode: `${reg.section?.course?.subject?.code ?? ""} ${reg.section?.course?.courseNumber ?? ""}`.trim(),
+              courseTitle: reg.section?.course?.title ?? "",
+              creditHours: Number(reg.creditHours ?? 0),
+              gradeCode: reg.gradeCode,
+              gradePoints: reg.gradePoints ? Number(reg.gradePoints) : null,
+              creditsEarned: Number(reg.creditsEarned ?? 0),
+              includeInGpa: reg.includeInGpa ?? false,
+              isRepeat: reg.isRepeat ?? false,
+              status: reg.status,
+            })),
+          };
+        }).sort((a, b) => a.startDate.getTime() - b.startDate.getTime()),
+        transferCredits: transfers.map((t) => ({
+          courseCode: t.sourceCourseCode ?? "",
+          courseTitle: t.sourceCourseTitle ?? "",
+          credits: Number(t.transferCredits ?? 0),
+          transferInstitution: t.sourceInstitutionName ?? "",
+        })),
+        degrees: student.programs
+          .filter((p) => p.degreeAwardedDate)
+          .map((p) => ({
+            degreeTitle: p.diplomaName ?? "Degree Conferred",
+            conferralDate: new Date(p.degreeAwardedDate!),
+            honorsDesignation: p.honorsDesignation,
+          })),
+        transcriptType: "unofficial",
+      };
+
+      // Transform to domain model
+      const transcriptData = TranscriptAssembler.assemble(assemblerInput);
+
+      // Generate PDF
+      const pdfBytes = await generateTranscriptPDF(transcriptData);
+      const base64 = Buffer.from(pdfBytes).toString("base64");
+
+      // Audit log
+      console.log(
+        JSON.stringify({
+          type: "AUDIT_LOG",
+          category: "transcript",
+          action: "generate_pdf",
+          outcome: "success",
+          actorId: ctx.user!.id,
+          studentId: input.studentId,
+          transcriptType: "unofficial",
+          timestamp: new Date().toISOString(),
+        })
+      );
+
+      return {
+        success: true,
+        pdfBase64: base64,
+        metadata: {
+          studentId: transcriptData.student.studentId,
+          studentName: `${transcriptData.student.firstName} ${transcriptData.student.lastName}`,
+          termCount: transcriptData.terms.length,
+          cumulativeGpa: transcriptData.cumulativeGpa,
+          totalCreditsEarned: transcriptData.totalCreditsEarned,
+          generatedAt: transcriptData.generatedAt.toISOString(),
+        },
       };
     }),
 });

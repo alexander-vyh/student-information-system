@@ -23,6 +23,10 @@
     "./common": {
       "types": "./dist/common/index.d.ts",
       "import": "./dist/common/index.js"
+    },
+    "./transcript": {
+      "types": "./dist/transcript/index.d.ts",
+      "import": "./dist/transcript/index.js"
     }
   },
   "scripts": {

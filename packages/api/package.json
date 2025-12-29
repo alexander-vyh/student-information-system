@@ -16,16 +16,22 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.1.4",
     "@sis/db": "workspace:*",
     "@sis/domain": "workspace:*",
     "@trpc/server": "^11.0.0-rc.660",
     "drizzle-orm": "^0.36.4",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
     "superjson": "^2.2.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@sis/typescript-config": "workspace:*",
     "@types/node": "^22.10.1",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.3.12",
     "typescript": "^5.7.2"
   }
 }

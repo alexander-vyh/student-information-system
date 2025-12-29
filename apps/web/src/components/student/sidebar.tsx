@@ -7,6 +7,7 @@ import {
   BookOpen,
   ClipboardList,
   GraduationCap,
+  FileText,
   DollarSign,
   User,
 } from "lucide-react";
@@ -31,6 +32,11 @@ const navigation = [
     name: "Grades",
     href: "/grades",
     icon: GraduationCap,
+  },
+  {
+    name: "Transcripts",
+    href: "/transcripts",
+    icon: FileText,
   },
   {
     name: "Financial",

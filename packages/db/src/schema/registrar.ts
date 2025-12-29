@@ -133,6 +133,20 @@ export const transcriptRequests = registrarSchema.table("transcript_requests", {
   documentStorageKey: varchar("document_storage_key", { length: 500 }),
   documentHash: varchar("document_hash", { length: 64 }), // SHA-256 for verification
 
+  // FERPA compliance - disclosure consent tracking
+  disclosureConsent: jsonb("disclosure_consent").$type<{
+    method: "signed_form" | "electronic" | "verbal";
+    consentDate: string;
+    consentDocumentKey?: string;
+    consentExpirationDate?: string;
+    witnessUserId?: string;
+  }>(),
+
+  // Law enforcement / subpoena tracking
+  isSubpoena: boolean("is_subpoena").default(false),
+  subpoenaDocumentKey: varchar("subpoena_document_key", { length: 500 }),
+  studentNotified: boolean("student_notified").default(true),
+
   // Audit
   auditLogId: varchar("audit_log_id", { length: 100 }),
 
@@ -142,6 +156,115 @@ export const transcriptRequests = registrarSchema.table("transcript_requests", {
   studentIdx: index("transcript_requests_student_idx").on(table.studentId),
   statusIdx: index("transcript_requests_status_idx").on(table.status),
   requestedAtIdx: index("transcript_requests_requested_at_idx").on(table.requestedAt),
+}));
+
+/**
+ * Transcript Verifications - public verification of transcript authenticity
+ * Used for QR code verification without exposing PII
+ */
+export const transcriptVerifications = registrarSchema.table("transcript_verifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  // Hash of the transcript document (SHA-256)
+  documentHash: varchar("document_hash", { length: 64 }).notNull().unique(),
+
+  // Reference to transcript request
+  transcriptRequestId: uuid("transcript_request_id")
+    .notNull()
+    .references(() => transcriptRequests.id),
+
+  // Verification data (NO PII - for public verification page)
+  institutionId: uuid("institution_id")
+    .notNull()
+    .references(() => institutions.id),
+  studentIdLast4: varchar("student_id_last_4", { length: 4 }),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+  transcriptType: varchar("transcript_type", { length: 20 }).notNull(),
+
+  // Revocation (for corrected transcripts)
+  isRevoked: boolean("is_revoked").default(false),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revocationReason: text("revocation_reason"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  documentHashIdx: uniqueIndex("transcript_verifications_hash_idx").on(table.documentHash),
+  transcriptRequestIdx: index("transcript_verifications_request_idx").on(table.transcriptRequestId),
+  institutionIdx: index("transcript_verifications_institution_idx").on(table.institutionId),
+}));
+
+/**
+ * Transcript Disclosure Log - FERPA required record of all disclosures
+ * Per 34 CFR 99.32, institutions must maintain a record of disclosures
+ * for as long as the education record is maintained.
+ *
+ * Students have the right to inspect this log upon request.
+ */
+export const transcriptDisclosureLog = registrarSchema.table("transcript_disclosure_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  // Core references
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => students.id, { onDelete: "restrict" }),
+  transcriptRequestId: uuid("transcript_request_id")
+    .references(() => transcriptRequests.id, { onDelete: "restrict" }),
+  institutionId: uuid("institution_id")
+    .notNull()
+    .references(() => institutions.id),
+
+  // REQUIRED: Party receiving disclosure (34 CFR 99.32(a)(1))
+  recipientName: varchar("recipient_name", { length: 255 }).notNull(),
+  recipientOrganization: varchar("recipient_organization", { length: 255 }),
+  recipientAddress: text("recipient_address"),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+
+  // REQUIRED: Legitimate interest (34 CFR 99.32(a)(2))
+  legitimateInterest: text("legitimate_interest").notNull(),
+
+  // Disclosure details
+  disclosureDate: timestamp("disclosure_date", { withTimezone: true }).notNull(),
+  disclosureMethod: varchar("disclosure_method", { length: 50 }).notNull(),
+  // electronic_delivery, mail, in_person, fax, third_party_service
+
+  // Legal basis for disclosure (34 CFR 99.31)
+  disclosureBasis: varchar("disclosure_basis", { length: 50 }).notNull(),
+  // student_consent, school_official, transfer_enrollment, financial_aid,
+  // subpoena, health_safety_emergency, directory_info, judicial_order
+
+  // Consent reference (if applicable)
+  consentDocumentKey: varchar("consent_document_key", { length: 500 }),
+
+  // Redisclosure notice included (34 CFR 99.33(a))
+  redisclosureNoticeIncluded: boolean("redisclosure_notice_included").default(true),
+
+  // Who processed this disclosure
+  processedBy: uuid("processed_by")
+    .notNull()
+    .references(() => users.id),
+  processedByRole: varchar("processed_by_role", { length: 100 }),
+
+  // Audit trail metadata
+  ipAddress: varchar("ip_address", { length: 45 }), // IPv6 compatible
+  userAgent: text("user_agent"),
+
+  // Immutable record - no updates allowed after creation
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+
+  // Hash for integrity verification
+  recordHash: varchar("record_hash", { length: 64 }).notNull(),
+}, (table) => ({
+  // Primary access patterns
+  studentIdx: index("disclosure_log_student_idx").on(table.studentId),
+  dateIdx: index("disclosure_log_date_idx").on(table.disclosureDate),
+  requestIdx: index("disclosure_log_request_idx").on(table.transcriptRequestId),
+
+  // For institutional reporting
+  institutionDateIdx: index("disclosure_log_institution_date_idx")
+    .on(table.institutionId, table.disclosureDate),
+
+  // For FERPA audits - find disclosures by basis
+  basisIdx: index("disclosure_log_basis_idx").on(table.disclosureBasis),
 }));
 
 /**
@@ -607,7 +730,7 @@ export interface BatchTranscriptConfig {
 // RELATIONS
 // =============================================================================
 
-export const transcriptRequestsRelations = relations(transcriptRequests, ({ one }) => ({
+export const transcriptRequestsRelations = relations(transcriptRequests, ({ one, many }) => ({
   student: one(students, {
     fields: [transcriptRequests.studentId],
     references: [students.id],
@@ -622,6 +745,40 @@ export const transcriptRequestsRelations = relations(transcriptRequests, ({ one 
   }),
   processedByUser: one(users, {
     fields: [transcriptRequests.processedBy],
+    references: [users.id],
+  }),
+  verification: one(transcriptVerifications, {
+    fields: [transcriptRequests.id],
+    references: [transcriptVerifications.transcriptRequestId],
+  }),
+}));
+
+export const transcriptVerificationsRelations = relations(transcriptVerifications, ({ one }) => ({
+  transcriptRequest: one(transcriptRequests, {
+    fields: [transcriptVerifications.transcriptRequestId],
+    references: [transcriptRequests.id],
+  }),
+  institution: one(institutions, {
+    fields: [transcriptVerifications.institutionId],
+    references: [institutions.id],
+  }),
+}));
+
+export const transcriptDisclosureLogRelations = relations(transcriptDisclosureLog, ({ one }) => ({
+  student: one(students, {
+    fields: [transcriptDisclosureLog.studentId],
+    references: [students.id],
+  }),
+  transcriptRequest: one(transcriptRequests, {
+    fields: [transcriptDisclosureLog.transcriptRequestId],
+    references: [transcriptRequests.id],
+  }),
+  institution: one(institutions, {
+    fields: [transcriptDisclosureLog.institutionId],
+    references: [institutions.id],
+  }),
+  processor: one(users, {
+    fields: [transcriptDisclosureLog.processedBy],
     references: [users.id],
   }),
 }));
