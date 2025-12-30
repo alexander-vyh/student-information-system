@@ -536,9 +536,9 @@ function CreateTransferCreditModal({
                   placeholder="Search for student..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
-                {studentsData && studentsData.length > 0 && (
+                {studentsData && studentsData.students.length > 0 && (
                   <ul className="mt-2 border border-gray-300 rounded-md max-h-40 overflow-y-auto">
-                    {studentsData.map((student) => (
+                    {studentsData.students.map((student) => (
                       <li
                         key={student.id}
                         onClick={() => {

@@ -8,9 +8,9 @@ interface Section {
   title: string;
   subjectCode: string;
   sectionNumber: string;
-  crn: string;
+  crn: string | null;
   creditHours: string;
-  instructionalMethod: string;
+  instructionalMethod: string | null;
   maxEnrollment: number;
   currentEnrollment: number;
   availableSeats: number;

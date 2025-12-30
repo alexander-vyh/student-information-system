@@ -1,8 +1,9 @@
 "use client";
 
 import { trpc } from "@/trpc/client";
-import { Download, FileText, AlertCircle, CheckCircle, HelpCircle } from "lucide-react";
+import { Download, FileText, CheckCircle, HelpCircle } from "lucide-react";
 import { useState } from "react";
+import { LoadingSpinner, Alert } from "@/components/ui";
 
 export default function TranscriptsPage() {
   const [generating, setGenerating] = useState(false);
@@ -77,14 +78,7 @@ export default function TranscriptsPage() {
   };
 
   if (!student) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner size="md" text="Loading..." centered minHeight="min-h-96" />;
   }
 
   const hasBlockingHolds = holdCheck?.hasBlockingHolds ?? false;
@@ -159,89 +153,44 @@ export default function TranscriptsPage() {
 
       {/* Blocking Holds Warning */}
       {hasBlockingHolds && (
-        <div
-          id="hold-warning"
-          role="alert"
-          aria-live="polite"
-          className="bg-red-50 border-l-4 border-red-500 p-4 rounded"
-        >
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
-                Transcript Hold Active
-              </h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p className="mb-2">
-                  You have {holdCheck?.holds.length} hold(s) blocking official
-                  transcript requests:
-                </p>
-                <ul className="list-disc list-inside space-y-1">
-                  {holdCheck?.holds.map((hold) => (
-                    <li key={hold.holdId}>
-                      <strong>{hold.holdName}</strong>
-                      {hold.resolutionInstructions && (
-                        <span className="block ml-5 text-red-600">
-                          {hold.resolutionInstructions}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2">
-                  Unofficial transcripts are still available for download.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Alert variant="error" title="Transcript Hold Active">
+          <p className="mb-2">
+            You have {holdCheck?.holds.length} hold(s) blocking official
+            transcript requests:
+          </p>
+          <ul className="list-disc list-inside space-y-1">
+            {holdCheck?.holds.map((hold) => (
+              <li key={hold.holdId}>
+                <strong>{hold.holdName}</strong>
+                {hold.resolutionInstructions && (
+                  <span className="block ml-5">
+                    {hold.resolutionInstructions}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2">
+            Unofficial transcripts are still available for download.
+          </p>
+        </Alert>
       )}
 
       {/* Success Message */}
       {success && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="bg-green-50 border-l-4 border-green-500 p-4 rounded"
-        >
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <CheckCircle className="h-5 w-5 text-green-500" aria-hidden="true" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-green-800">
-                Transcript Generated Successfully
-              </h3>
-              <p className="mt-1 text-sm text-green-700">
-                Your unofficial transcript has been generated. Check your
-                downloads folder.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Alert variant="success" title="Transcript Generated Successfully">
+          <p>
+            Your unofficial transcript has been generated. Check your
+            downloads folder.
+          </p>
+        </Alert>
       )}
 
       {/* Error Message */}
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="bg-red-50 border-l-4 border-red-500 p-4 rounded"
-        >
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
-                Error Generating Transcript
-              </h3>
-              <p className="mt-1 text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        </div>
+        <Alert variant="error" title="Error Generating Transcript">
+          <p>{error}</p>
+        </Alert>
       )}
 
       {/* Unofficial Transcript Card */}
@@ -431,11 +380,8 @@ export default function TranscriptsPage() {
       )}
 
       {/* Information Box */}
-      <div className="bg-blue-50 rounded-lg p-6">
-        <h3 className="text-sm font-medium text-blue-900 mb-2">
-          Important Information
-        </h3>
-        <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+      <Alert variant="info" title="Important Information">
+        <ul className="space-y-1 list-disc list-inside">
           <li>
             Unofficial transcripts are watermarked and not accepted by most
             institutions
@@ -456,7 +402,7 @@ export default function TranscriptsPage() {
             questions
           </li>
         </ul>
-      </div>
+      </Alert>
     </div>
   );
 }

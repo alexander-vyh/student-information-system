@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { trpc } from "@/trpc/client";
+import { LoadingSpinner, StatCard } from "@/components/ui";
+import { BookOpen, CheckCircle } from "lucide-react";
 
 export default function MyClassesPage() {
   const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
@@ -117,10 +119,7 @@ export default function MyClassesPage() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">My Classes</h1>
         </div>
-        <div className="flex items-center justify-center p-12 bg-white rounded-lg shadow">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="ml-3 text-gray-600">Loading your classes...</p>
-        </div>
+        <LoadingSpinner size="md" text="Loading your classes..." centered />
       </div>
     );
   }
@@ -301,48 +300,39 @@ export default function MyClassesPage() {
       {/* Additional Info Cards */}
       {selectedTerm && (
         <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Total Credits Card */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-medium text-gray-500">
-              Total Credits
-            </h3>
-            <p className="mt-2 text-3xl font-bold text-gray-900">
-              {selectedTerm.enrollments
-                .reduce((sum, e) => sum + parseFloat(e.creditHours || "0"), 0)
-                .toFixed(1)}
-            </p>
-          </div>
+          <StatCard
+            label="Total Credits"
+            value={selectedTerm.enrollments
+              .reduce((sum, e) => sum + parseFloat(e.creditHours || "0"), 0)
+              .toFixed(1)}
+            icon={BookOpen}
+            color="blue"
+          />
 
-          {/* Completed Classes Card */}
           {!isCurrentTerm(selectedTerm.termName) && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-sm font-medium text-gray-500">
-                Completed Classes
-              </h3>
-              <p className="mt-2 text-3xl font-bold text-gray-900">
-                {
-                  selectedTerm.enrollments.filter(
-                    (e) => e.status === "completed"
-                  ).length
-                }
-              </p>
-            </div>
+            <StatCard
+              label="Completed Classes"
+              value={
+                selectedTerm.enrollments.filter(
+                  (e) => e.status === "completed"
+                ).length
+              }
+              icon={CheckCircle}
+              color="green"
+            />
           )}
 
-          {/* Active Enrollments Card (Current Term Only) */}
           {isCurrentTerm(selectedTerm.termName) && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-sm font-medium text-gray-500">
-                Active Enrollments
-              </h3>
-              <p className="mt-2 text-3xl font-bold text-gray-900">
-                {
-                  selectedTerm.enrollments.filter(
-                    (e) => e.status === "registered"
-                  ).length
-                }
-              </p>
-            </div>
+            <StatCard
+              label="Active Enrollments"
+              value={
+                selectedTerm.enrollments.filter(
+                  (e) => e.status === "registered"
+                ).length
+              }
+              icon={CheckCircle}
+              color="green"
+            />
           )}
         </div>
       )}

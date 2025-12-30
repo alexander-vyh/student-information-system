@@ -15,7 +15,7 @@ import {
 const navigation = [
   {
     name: "Dashboard",
-    href: "/my-classes",
+    href: "/home",
     icon: LayoutDashboard,
   },
   {

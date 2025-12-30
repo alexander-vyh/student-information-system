@@ -40,7 +40,7 @@ export const registrations = enrollmentSchema.table("registrations", {
   billingHours: decimal("billing_hours", { precision: 4, scale: 2 }),
 
   // Historical data - captured at registration time for transcript accuracy
-  courseTitleAtRegistration: varchar("course_title_at_registration", { length: 200 }),
+  // TODO: Add via migration - courseTitleAtRegistration: varchar("course_title_at_registration", { length: 200 }),
 
   // Registration status
   status: varchar("status", { length: 20 }).default("registered").notNull(),

@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { trpc } from "@/trpc/client";
-import { Calendar, Search, ShoppingCart, AlertCircle } from "lucide-react";
+import { Calendar, Search, ShoppingCart } from "lucide-react";
 import { SectionSearchResults } from "@/components/registration/section-search-results";
 import { RegistrationCart } from "@/components/registration/registration-cart";
+import { Alert } from "@/components/ui";
 
 export default function RegistrationPage() {
   const [selectedTermId, setSelectedTermId] = useState<string>("");
@@ -174,12 +175,11 @@ export default function RegistrationPage() {
             ))}
           </select>
         ) : (
-          <div className="mt-3 flex items-start gap-2 rounded-md bg-yellow-50 p-3">
-            <AlertCircle className="h-5 w-5 text-yellow-400" />
-            <div className="text-sm text-yellow-700">
+          <div className="mt-3">
+            <Alert variant="warning" showIcon={false}>
               No registration periods are currently open. Please check back
               later.
-            </div>
+            </Alert>
           </div>
         )}
       </div>
