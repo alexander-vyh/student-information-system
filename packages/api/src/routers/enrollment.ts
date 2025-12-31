@@ -425,6 +425,8 @@ export const enrollmentRouter = router({
     )
     .use(canAccessStudent((input) => (input as { studentId: string }).studentId))
     .query(async ({ ctx, input }) => {
+      console.log('[DEBUG getSchedule] Query params:', { studentId: input.studentId, termId: input.termId });
+
       const schedule = await ctx.db.query.registrations.findMany({
         where: and(
           eq(registrations.studentId, input.studentId),
@@ -440,33 +442,48 @@ export const enrollmentRouter = router({
         },
       });
 
-      return {
-        schedule: schedule.map((reg) => ({
-          registrationId: reg.id,
-          sectionId: reg.sectionId,
-          status: reg.status,
-          gradeMode: reg.gradeMode,
-          creditHours: reg.creditHours,
-          registeredAt: reg.registrationDate,
-          course: reg.section?.course
-            ? {
-                courseCode: reg.section.course.courseCode,
-                title: reg.section.course.title,
-                creditHours: reg.section.creditHours,
-              }
-            : null,
-          section: reg.section
-            ? {
-                sectionNumber: reg.section.sectionNumber,
-                instructionalMethod: reg.section.instructionalMethod,
-              }
-            : null,
-        })),
-        totalCredits: schedule.reduce(
-          (sum, reg) => sum + parseFloat(reg.creditHours),
-          0
+      console.log('[DEBUG getSchedule] Found registrations:', schedule.length);
+      if (schedule.length > 0) {
+        console.log('[DEBUG getSchedule] First registration:', {
+          id: schedule[0]?.id,
+          studentId: schedule[0]?.studentId,
+          termId: schedule[0]?.termId,
+          sectionId: schedule[0]?.sectionId,
+          status: schedule[0]?.status
+        });
+      }
+
+      // Also query without termId filter to see all registrations
+      const allRegs = await ctx.db.query.registrations.findMany({
+        where: and(
+          eq(registrations.studentId, input.studentId),
+          inArray(registrations.status, ["registered", "waitlisted"])
         ),
-      };
+      });
+      console.log('[DEBUG getSchedule] All registered/waitlisted for student (any term):', allRegs.length);
+      if (allRegs.length > 0) {
+        console.log('[DEBUG getSchedule] Sample registrations:', allRegs.map(r => ({
+          id: r.id.substring(0, 8),
+          termId: r.termId?.substring(0, 8) || 'NULL',
+          status: r.status
+        })));
+      }
+
+      // Return flat structure that frontend expects
+      return schedule.map((reg) => ({
+        registrationId: reg.id,
+        sectionId: reg.sectionId,
+        status: reg.status,
+        gradeMode: reg.gradeMode,
+        creditHours: reg.creditHours,
+        gradeCode: reg.finalGrade ?? null,
+        registeredAt: reg.registrationDate,
+        // Flatten course fields to top level
+        courseCode: reg.section?.course?.courseCode ?? "Unknown",
+        title: reg.section?.course?.title ?? "Unknown Course",
+        sectionNumber: reg.section?.sectionNumber ?? "Unknown",
+        instructionalMethod: reg.section?.instructionalMethod ?? "Unknown",
+      }));
     }),
 
   /**
