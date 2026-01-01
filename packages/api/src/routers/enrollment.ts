@@ -32,8 +32,10 @@ import {
   gradeScales,
   courseRequisites,
   sectionMeetings,
+  users,
 } from "@sis/db/schema";
 import type { RequisiteRule } from "@sis/db/schema";
+import { sendEnrollmentConfirmation } from "../lib/email/index.js";
 
 // ============================================================================
 // Input Schemas
@@ -408,6 +410,79 @@ async function checkScheduleConflicts(
   };
 }
 
+/**
+ * Send enrollment confirmation email to student
+ * Includes all courses registered for the term
+ */
+async function sendEnrollmentEmail(
+  db: Context["db"],
+  studentId: string,
+  termId: string
+): Promise<void> {
+  try {
+    // Get student with user email
+    const student = await db.query.students.findFirst({
+      where: eq(students.id, studentId),
+      with: {
+        user: true,
+      },
+    });
+
+    if (!student?.user?.email) {
+      console.warn(`[Enrollment] No email found for student ${studentId}`);
+      return;
+    }
+
+    // Get term info
+    const term = await db.query.terms.findFirst({
+      where: eq(terms.id, termId),
+    });
+
+    if (!term) {
+      console.warn(`[Enrollment] Term ${termId} not found`);
+      return;
+    }
+
+    // Get all registered courses for this term
+    const enrolledCourses = await db.query.registrations.findMany({
+      where: and(
+        eq(registrations.studentId, studentId),
+        eq(registrations.termId, termId),
+        eq(registrations.status, "registered")
+      ),
+      with: {
+        section: {
+          with: {
+            course: true,
+          },
+        },
+      },
+    });
+
+    const courses = enrolledCourses.map((reg) => ({
+      code: reg.section.course?.courseCode ?? "Unknown",
+      title: reg.section.course?.title ?? "Unknown",
+      credits: parseFloat(reg.creditHours ?? "0"),
+      instructor: undefined, // TODO: Add instructor lookup via primaryInstructorId
+    }));
+
+    const totalCredits = courses.reduce((sum, c) => sum + c.credits, 0);
+
+    // Send email
+    await sendEnrollmentConfirmation({
+      to: student.user.email,
+      studentName: `${student.preferredFirstName ?? student.legalFirstName} ${student.preferredLastName ?? student.legalLastName}`,
+      studentId: student.studentId ?? studentId.substring(0, 8),
+      term: term.name,
+      courses,
+      totalCredits,
+    });
+  } catch (error) {
+    // Don't fail the enrollment if email fails
+    console.error("[Enrollment] Failed to send confirmation email:", error);
+  }
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -476,7 +551,7 @@ export const enrollmentRouter = router({
         status: reg.status,
         gradeMode: reg.gradeMode,
         creditHours: reg.creditHours,
-        gradeCode: reg.finalGrade ?? null,
+        gradeCode: reg.gradeCode ?? null,
         registeredAt: reg.registrationDate,
         // Flatten course fields to top level
         courseCode: reg.section?.course?.courseCode ?? "Unknown",
@@ -746,6 +821,9 @@ export const enrollmentRouter = router({
             })
             .where(eq(sections.id, input.sectionId));
 
+          // Send enrollment confirmation email
+          await sendEnrollmentEmail(ctx.db, input.studentId, section.termId);
+
           return {
             registrationId: existingReg.id,
             message: "Successfully re-enrolled",
@@ -776,6 +854,9 @@ export const enrollmentRouter = router({
           currentEnrollment: currentEnrollment + 1,
         })
         .where(eq(sections.id, input.sectionId));
+
+      // Send enrollment confirmation email
+      await sendEnrollmentEmail(ctx.db, input.studentId, section.termId);
 
       return {
         registrationId: newReg?.id,

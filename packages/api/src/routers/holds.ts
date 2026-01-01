@@ -9,7 +9,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, requireRole } from "../trpc.js";
 import { eq, and, isNull, isNotNull, inArray, sql } from "drizzle-orm";
-import { registrationHolds, students, holdTypes, type HoldAutomationRule } from "@sis/db/schema";
+import { registrationHolds, students, holdTypes, users, type HoldAutomationRule } from "@sis/db/schema";
+import { sendHoldNotification } from "../lib/email/index.js";
 
 export const holdsRouter = router({
   /**
@@ -298,6 +299,49 @@ export const holdsRouter = router({
         });
       }
 
+      // Send email notification to student
+      try {
+        // Get student with user email
+        const studentWithUser = await ctx.db.query.students.findFirst({
+          where: eq(students.id, input.studentId),
+          with: {
+            user: {
+              columns: {
+                email: true,
+              },
+            },
+          },
+        });
+
+        if (studentWithUser?.user?.email) {
+          // Build list of blocked actions
+          const blockedActions: string[] = [];
+          if (holdDetails.blocksRegistration) blockedActions.push("Course Registration");
+          if (holdDetails.blocksGrades) blockedActions.push("Viewing Grades");
+          if (holdDetails.blocksTranscript) blockedActions.push("Requesting Transcripts");
+          if (holdDetails.blocksDiploma) blockedActions.push("Receiving Diploma");
+
+          const studentName = `${studentWithUser.preferredFirstName ?? studentWithUser.legalFirstName} ${studentWithUser.preferredLastName ?? studentWithUser.legalLastName}`;
+
+          // Send notification email
+          await sendHoldNotification({
+            to: studentWithUser.user.email,
+            studentName,
+            holdType: holdDetails.holdName,
+            holdReason: holdDetails.description ?? "No additional information provided",
+            blockedActions,
+            contactOffice: holdDetails.releaseAuthority ?? "Registrar's Office",
+            contactEmail: undefined, // TODO: Add office email lookup
+            contactPhone: undefined, // TODO: Add office phone lookup
+          });
+
+          console.log(`[Holds] Notification email sent to ${studentWithUser.user.email} for hold ${newHold.id}`);
+        }
+      } catch (emailError) {
+        // Don't fail the hold creation if email fails
+        console.error("[Holds] Failed to send hold notification email:", emailError);
+      }
+
       return {
         id: newHold.id,
         message: "Hold created successfully",
@@ -361,6 +405,53 @@ export const holdsRouter = router({
           updatedAt: new Date(),
         })
         .where(eq(registrationHolds.id, input.holdId));
+
+      // Send email notification to student about hold clearance
+      try {
+        // Get student with user email
+        const studentWithUser = await ctx.db.query.students.findFirst({
+          where: eq(students.id, hold.studentId),
+          with: {
+            user: {
+              columns: {
+                email: true,
+              },
+            },
+          },
+        });
+
+        if (studentWithUser?.user?.email) {
+          // Build list of actions that are now unblocked
+          const unblockedActions: string[] = [];
+          if (hold.blocksRegistration) unblockedActions.push("Course Registration");
+          if (hold.blocksGrades) unblockedActions.push("Viewing Grades");
+          if (hold.blocksTranscript) unblockedActions.push("Requesting Transcripts");
+          if (hold.blocksDiploma) unblockedActions.push("Receiving Diploma");
+
+          const studentName = `${studentWithUser.preferredFirstName ?? studentWithUser.legalFirstName} ${studentWithUser.preferredLastName ?? studentWithUser.legalLastName}`;
+
+          // Send notification email (reusing the template with cleared status messaging)
+          await sendHoldNotification({
+            to: studentWithUser.user.email,
+            studentName,
+            holdType: `${hold.holdName} - CLEARED`,
+            holdReason: input.resolutionNotes
+              ? `This hold has been cleared. Resolution: ${input.resolutionNotes}`
+              : "This hold has been cleared and is no longer active on your account.",
+            blockedActions: unblockedActions.length > 0
+              ? [`You can now: ${unblockedActions.join(", ")}`]
+              : ["No restrictions were in place"],
+            contactOffice: hold.releaseAuthority ?? "Registrar's Office",
+            contactEmail: undefined,
+            contactPhone: undefined,
+          });
+
+          console.log(`[Holds] Clearance notification email sent to ${studentWithUser.user.email} for hold ${hold.id}`);
+        }
+      } catch (emailError) {
+        // Don't fail the hold release if email fails
+        console.error("[Holds] Failed to send hold clearance notification email:", emailError);
+      }
 
       return {
         message: "Hold released successfully",
@@ -865,6 +956,50 @@ export const holdsRouter = router({
 
       await ctx.db.insert(registrationHolds).values(holdsToCreate);
 
+      // Send email notifications to all affected students
+      try {
+        const studentsWithEmails = await ctx.db.query.students.findMany({
+          where: inArray(students.id, validStudentIds),
+          with: {
+            user: {
+              columns: {
+                email: true,
+              },
+            },
+          },
+        });
+
+        // Build list of blocked actions (same for all students in this batch)
+        const blockedActions: string[] = [];
+        if (holdDetails.blocksRegistration) blockedActions.push("Course Registration");
+        if (holdDetails.blocksGrades) blockedActions.push("Viewing Grades");
+        if (holdDetails.blocksTranscript) blockedActions.push("Requesting Transcripts");
+        if (holdDetails.blocksDiploma) blockedActions.push("Receiving Diploma");
+
+        // Send notification to each student
+        for (const student of studentsWithEmails) {
+          if (student.user?.email) {
+            const studentName = `${student.preferredFirstName ?? student.legalFirstName} ${student.preferredLastName ?? student.legalLastName}`;
+
+            await sendHoldNotification({
+              to: student.user.email,
+              studentName,
+              holdType: holdDetails.holdName,
+              holdReason: holdDetails.description ?? "No additional information provided",
+              blockedActions,
+              contactOffice: holdDetails.releaseAuthority ?? "Registrar's Office",
+              contactEmail: undefined,
+              contactPhone: undefined,
+            });
+          }
+        }
+
+        console.log(`[Holds] Batch notification emails sent to ${studentsWithEmails.length} students`);
+      } catch (emailError) {
+        // Don't fail the batch operation if emails fail
+        console.error("[Holds] Failed to send batch hold notification emails:", emailError);
+      }
+
       return {
         created: validStudentIds.length,
         skipped: input.studentIds.length - validStudentIds.length,
@@ -919,6 +1054,75 @@ export const holdsRouter = router({
           updatedAt: new Date(),
         })
         .where(inArray(registrationHolds.id, validHoldIds));
+
+      // Send email notifications to affected students
+      try {
+        // Get unique student IDs from the released holds
+        const affectedStudentIds = Array.from(
+          new Set(
+            holds
+              .filter((h) => validHoldIds.includes(h.id))
+              .map((h) => h.studentId)
+          )
+        );
+
+        const studentsWithEmails = await ctx.db.query.students.findMany({
+          where: inArray(students.id, affectedStudentIds),
+          with: {
+            user: {
+              columns: {
+                email: true,
+              },
+            },
+          },
+        });
+
+        // Send notification to each affected student
+        for (const student of studentsWithEmails) {
+          if (student.user?.email) {
+            // Get all released holds for this student
+            const studentReleasedHolds = holds.filter(
+              (h) => h.studentId === student.id && validHoldIds.includes(h.id)
+            );
+
+            if (studentReleasedHolds.length > 0) {
+              const holdNames = studentReleasedHolds.map((h) => h.holdName).join(", ");
+              const studentName = `${student.preferredFirstName ?? student.legalFirstName} ${student.preferredLastName ?? student.legalLastName}`;
+
+              // Build list of unblocked actions
+              const unblockedActions = new Set<string>();
+              for (const hold of studentReleasedHolds) {
+                if (hold.blocksRegistration) unblockedActions.add("Course Registration");
+                if (hold.blocksGrades) unblockedActions.add("Viewing Grades");
+                if (hold.blocksTranscript) unblockedActions.add("Requesting Transcripts");
+                if (hold.blocksDiploma) unblockedActions.add("Receiving Diploma");
+              }
+
+              await sendHoldNotification({
+                to: student.user.email,
+                studentName,
+                holdType: studentReleasedHolds.length > 1
+                  ? `${studentReleasedHolds.length} Holds - CLEARED`
+                  : `${studentReleasedHolds[0]?.holdName} - CLEARED`,
+                holdReason: input.resolutionNotes
+                  ? `These holds have been cleared. Resolution: ${input.resolutionNotes}`
+                  : `The following hold(s) have been cleared: ${holdNames}`,
+                blockedActions: unblockedActions.size > 0
+                  ? [`You can now: ${Array.from(unblockedActions).join(", ")}`]
+                  : ["No restrictions were in place"],
+                contactOffice: "Registrar's Office",
+                contactEmail: undefined,
+                contactPhone: undefined,
+              });
+            }
+          }
+        }
+
+        console.log(`[Holds] Batch clearance notification emails sent to ${studentsWithEmails.length} students`);
+      } catch (emailError) {
+        // Don't fail the batch operation if emails fail
+        console.error("[Holds] Failed to send batch clearance notification emails:", emailError);
+      }
 
       return {
         released: validHoldIds.length,

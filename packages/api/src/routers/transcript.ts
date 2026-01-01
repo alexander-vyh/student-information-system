@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure, requireRole, canAccessStudent } from "../trpc.js";
+import { router, protectedProcedure, publicProcedure, requireRole, canAccessStudent } from "../trpc.js";
 import { eq, and, desc, isNull, gte, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import {
@@ -26,6 +26,7 @@ import {
   holdTypes,
   termEnrollments,
   transcriptRequests,
+  transcriptVerifications,
   studentNameHistory,
   institutions,
   type TranscriptType,
@@ -34,6 +35,7 @@ import {
 } from "@sis/db/schema";
 import { TranscriptAssembler, type AssemblerInput } from "@sis/domain/transcript";
 import { generateTranscriptPDF } from "../transcript/pdf-generator.js";
+import { db } from "@sis/db";
 
 // =============================================================================
 // INPUT SCHEMAS
@@ -937,6 +939,84 @@ export const transcriptRouter = router({
           cumulativeGpa: transcriptData.cumulativeGpa,
           totalCreditsEarned: transcriptData.totalCreditsEarned,
           generatedAt: transcriptData.generatedAt.toISOString(),
+        },
+      };
+    }),
+
+  /**
+   * PUBLIC VERIFICATION ENDPOINT
+   * Verify a digitally-signed transcript using its document ID
+   * FERPA-compliant: Returns NO PII beyond what's publicly verifiable
+   */
+  verifyTranscript: publicProcedure
+    .input(
+      z.object({
+        documentId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      // Look up verification record by verification URL
+      const verificationUrl = `http://localhost:3000/verify/${input.documentId}`;
+
+      const [verification] = await ctx.db
+        .select({
+          id: transcriptVerifications.id,
+          documentHash: transcriptVerifications.documentHash,
+          institutionId: transcriptVerifications.institutionId,
+          studentIdLast4: transcriptVerifications.studentIdLast4,
+          issuedAt: transcriptVerifications.issuedAt,
+          transcriptType: transcriptVerifications.transcriptType,
+          signedAt: transcriptVerifications.signedAt,
+          signerCertificateFingerprint: transcriptVerifications.signerCertificateFingerprint,
+          isRevoked: transcriptVerifications.isRevoked,
+          revokedAt: transcriptVerifications.revokedAt,
+          revocationReason: transcriptVerifications.revocationReason,
+        })
+        .from(transcriptVerifications)
+        .where(eq(transcriptVerifications.verificationUrl, verificationUrl))
+        .limit(1);
+
+      if (!verification) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Transcript verification record not found",
+        });
+      }
+
+      // Get institution details (non-PII)
+      const [institution] = await ctx.db
+        .select({
+          name: institutions.name,
+          city: institutions.city,
+          state: institutions.state,
+        })
+        .from(institutions)
+        .where(eq(institutions.id, verification.institutionId))
+        .limit(1);
+
+      // Check if revoked
+      if (verification.isRevoked) {
+        return {
+          verified: false,
+          message: "This transcript has been revoked",
+          revokedAt: verification.revokedAt?.toISOString(),
+          revocationReason: verification.revocationReason,
+        };
+      }
+
+      // Return verification details (NO PII)
+      return {
+        verified: true,
+        message: "Transcript verified successfully",
+        details: {
+          institutionName: institution?.name,
+          institutionLocation: institution ? `${institution.city}, ${institution.state}` : undefined,
+          issuedAt: verification.issuedAt.toISOString(),
+          transcriptType: verification.transcriptType,
+          studentIdLast4: verification.studentIdLast4,
+          signedAt: verification.signedAt?.toISOString(),
+          certificateFingerprint: verification.signerCertificateFingerprint,
+          documentHash: verification.documentHash,
         },
       };
     }),
